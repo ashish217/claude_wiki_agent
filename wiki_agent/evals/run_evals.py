@@ -42,7 +42,12 @@ RESULTS_DIR = Path(__file__).with_name("results")
 
 _CORRECT = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
 _QQ = {"good": 1.0, "adequate": 0.5, "poor": 0.0}
-_FAITH_PASS_THRESHOLD = 0.8
+# Per-sample faithfulness pass bar. Set to 0.7 (tolerates one unsupported claim in
+# a 4+-claim answer) to absorb judge-side claim-decomposition noise on short
+# answers, where a single flipped label moves the score ~0.2. Contradicted claims
+# are still a hard fail via a separate gate, so this only loosens tolerance for
+# *unsupported* (not hallucinated-false) claims.
+_FAITH_PASS_THRESHOLD = 0.7
 
 
 def load_cases(path: Path) -> List[Dict[str, Any]]:

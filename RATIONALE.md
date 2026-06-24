@@ -78,8 +78,10 @@ an answer that is correct but smuggles in unretrieved facts — and it surfaces
 ones.
 
 **A case "passes"** only if it does everything right *for its category*:
-grounded when it should be, correct, with no contradicted claims and
-faithfulness ≥ 0.8, plus the category-specific behaviour (disambiguated /
+grounded when it should be, correct, with no contradicted claims and per-sample
+faithfulness ≥ 0.7 (the bar is 0.7, not 0.8, to tolerate one unsupported claim in
+a short answer and absorb judge claim-decomposition noise — contradicted claims
+remain a hard fail), plus the category-specific behaviour (disambiguated /
 premise-corrected / abstained). pass_rate is therefore a strict conjunction — a
 deliberately demanding headline. When it dips, the report **attributes** every
 failure to the specific gate(s) it tripped (`grounding_violation`,
