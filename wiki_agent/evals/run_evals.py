@@ -119,6 +119,8 @@ def _failure_reasons(case, j, grounding_violation, faithfulness, contradicted) -
         reasons.append("grounding_violation")
     if bool(case.get("should_abstain")) and not j.get("abstained"):
         reasons.append("did_not_abstain")
+    if not bool(case.get("should_abstain")) and j.get("abstained"):
+        reasons.append("abstained_wrongly")  # abstained on an answerable question
     if cat == "ambiguous" and j.get("disambiguated") != "yes":
         reasons.append("not_disambiguated")
     if cat == "false_premise" and j.get("premise_handled") != "yes":
