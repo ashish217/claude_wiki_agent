@@ -21,6 +21,8 @@ from typing import Any, Dict, Optional
 
 import anthropic
 
+from ..agent import AgentResult
+
 JUDGE_MODEL = "claude-opus-4-8"
 
 _RUBRIC = """\
@@ -83,7 +85,7 @@ def _text_of(content_blocks) -> str:
 
 def judge_answer(
     case: Dict[str, Any],
-    result: Dict[str, Any],
+    result: AgentResult,
     client: Optional[anthropic.Anthropic] = None,
 ) -> Dict[str, Any]:
     client = client or anthropic.Anthropic()
@@ -93,8 +95,8 @@ def judge_answer(
         f"GOLD KEY FACTS:\n{', '.join(case.get('key_facts', [])) or '(none)'}\n\n"
         f"EXPECTED BEHAVIOUR: should_search={case.get('should_search')}, "
         f"should_abstain={case.get('should_abstain')}, category={case.get('category')}\n\n"
-        f"RETRIEVED WIKIPEDIA TEXT:\n{result.get('retrieved_context') or '(no search was performed)'}\n\n"
-        f"SYSTEM ANSWER:\n{result.get('answer') or '(empty)'}"
+        f"RETRIEVED WIKIPEDIA TEXT:\n{result.retrieved_context or '(no search was performed)'}\n\n"
+        f"SYSTEM ANSWER:\n{result.answer or '(empty)'}"
     )
 
     resp = client.messages.create(

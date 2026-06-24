@@ -71,8 +71,9 @@ down by dimension and category, and writes a full per-case JSON to
 
 ```
 wiki_agent/
+  prompts.py          system prompt + search_wikipedia tool definition
   wikipedia.py        MediaWiki client + result formatting
-  agent.py            system prompt, tool definition, manual agentic loop
+  agent.py            manual agentic loop (ToolCall / AgentResult dataclasses)
   cli.py              `python -m wiki_agent`
   evals/
     cases.jsonl       test taxonomy (8 categories)

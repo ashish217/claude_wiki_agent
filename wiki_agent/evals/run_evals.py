@@ -59,17 +59,22 @@ def run(args) -> None:
 
         # Programmatic check: did tool-use match expectations?
         exp = case.get("should_search")
-        search_ok = None if exp is None else (result["searched"] == exp)
+        search_ok = None if exp is None else (result.searched == exp)
         abstain_ok = bool(judgment.get("abstained")) == bool(case.get("should_abstain")) if judgment else None
 
         row = {
             "id": case["id"],
             "category": case["category"],
             "question": case["question"],
-            "answer": result["answer"],
-            "searched": result["searched"],
-            "n_searches": len(result["tool_calls"]),
-            "queries": [tc["query"] for tc in result["tool_calls"]],
+            "answer": result.answer,
+            "searched": result.searched,
+            "n_searches": len(result.tool_calls),
+            "queries": [tc.query for tc in result.tool_calls],
+            "tokens": {
+                "input": result.usage.input_tokens,
+                "output": result.usage.output_tokens,
+                "cache_read": result.usage.cache_read_input_tokens,
+            },
             "search_ok": search_ok,
             "abstain_ok": abstain_ok,
             "judgment": judgment,
@@ -83,7 +88,7 @@ def run(args) -> None:
         if abstain_ok is False:
             flags.append("ABSTAIN-MISMATCH")
         flag_str = ("  ⚠ " + ",".join(flags)) if flags else ""
-        print(f"  [{case['id']:<16}] correctness={c:<9} searches={len(result['tool_calls'])}{flag_str}")
+        print(f"  [{case['id']:<16}] correctness={c:<9} searches={len(result.tool_calls)}{flag_str}")
 
     _report(rows, args)
 
@@ -97,11 +102,14 @@ def run(args) -> None:
 def _report(rows: List[Dict[str, Any]], args) -> None:
     print("\n" + "=" * 70 + "\nPROGRAMMATIC (from trace)\n" + "-" * 70)
     avg_searches = sum(r["n_searches"] for r in rows) / len(rows)
+    avg_in = sum(r["tokens"]["input"] for r in rows) / len(rows)
+    avg_out = sum(r["tokens"]["output"] for r in rows) / len(rows)
     search_checked = [r for r in rows if r["search_ok"] is not None]
     search_pass = sum(1 for r in search_checked if r["search_ok"])
     abstain_checked = [r for r in rows if r["abstain_ok"] is not None]
     abstain_pass = sum(1 for r in abstain_checked if r["abstain_ok"])
     print(f"  avg searches/question      : {avg_searches:.2f}")
+    print(f"  avg tokens/question        : {avg_in:.0f} in / {avg_out:.0f} out")
     print(f"  tool-use appropriateness   : {_pct(search_pass, len(search_checked))}  ({search_pass}/{len(search_checked)})")
     print(f"  abstention accuracy        : {_pct(abstain_pass, len(abstain_checked))}  ({abstain_pass}/{len(abstain_checked)})")
 

@@ -25,15 +25,15 @@ def _print_run(question: str, model: str) -> None:
     print(f"\n{'=' * 78}\nQ: {question}\n{'-' * 78}")
     result = answer_question(question, model=model)
 
-    if result["searched"]:
-        print(f"[search used: {len(result['tool_calls'])} call(s)]")
-        for i, tc in enumerate(result["tool_calls"], 1):
-            titles = ", ".join(tc["result_titles"]) or "(no results)"
-            print(f'  {i}. query="{tc["query"]}" -> {titles}')
+    if result.searched:
+        print(f"[search used: {len(result.tool_calls)} call(s)]")
+        for i, tc in enumerate(result.tool_calls, 1):
+            titles = ", ".join(tc.result_titles) or "(no results)"
+            print(f'  {i}. query="{tc.query}" -> {titles}')
     else:
         print("[no search performed — answered directly]")
 
-    print(f"\nA: {result['answer']}\n")
+    print(f"\nA: {result.answer}\n")
 
 
 def main(argv=None) -> int:

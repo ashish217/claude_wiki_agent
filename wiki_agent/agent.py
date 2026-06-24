@@ -9,10 +9,12 @@ used, and grading *faithfulness* (was the answer supported by retrieved text?).
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import anthropic
 
+from .prompts import SYSTEM_PROMPT, TOOL_DEF
 from .wikipedia import format_results, search_wikipedia
 
 # Claude Haiku 4.5 — the agent model. Deliberately a small model: it makes the
@@ -21,68 +23,54 @@ from .wikipedia import format_results, search_wikipedia
 # the loop runs without thinking and the prompt carries all the behaviour.
 DEFAULT_MODEL = "claude-haiku-4-5"
 MAX_TURNS = 6
-MAX_TOKENS = 2048
+MAX_TOKENS = 4096
 
-SYSTEM_PROMPT = """\
-You are a careful research assistant that answers questions using English \
-Wikipedia as your source of truth. You have one tool, search_wikipedia(query), \
-which returns the top matching Wikipedia articles with their introductions.
 
-How to work:
+@dataclass
+class ToolCall:
+    """One search_wikipedia invocation and what it returned."""
 
-1. SEARCH FIRST. For any question about facts, people, places, events, dates, \
-numbers, or anything that may have changed over time, search Wikipedia before \
-answering. Do not answer specific facts from memory — your training data may be \
-outdated or wrong. The only exception is trivial reasoning (e.g. simple \
-arithmetic) that needs no external source; for those, just answer.
+    query: str
+    result_titles: List[str]
+    result_text: str
+    is_error: bool = False
 
-2. SEARCH WELL. Query with concise entity or topic terms, not the user's whole \
-sentence. For multi-step questions, break them into parts and search for each in \
-turn — first find the entity, then search again for the follow-up fact. If the \
-first results don't contain the answer, refine the query and search again.
 
-3. GROUND YOUR ANSWER. Base your answer only on the content the tool returned. \
-Do not add facts that aren't supported by what you retrieved. If the retrieved \
-articles don't actually contain the answer, say so rather than filling the gap \
-from memory.
+@dataclass
+class Usage:
+    """Token usage accumulated across every model call in one answer."""
 
-4. CITE. Name the Wikipedia article(s) you used so the user can verify.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
-5. BE HONEST AND CALIBRATED.
-   - If Wikipedia doesn't have the answer after a genuine search, say you \
-couldn't find it on Wikipedia instead of guessing.
-   - If the question rests on a false or mistaken premise, point out the \
-discrepancy rather than playing along.
-   - If the question is ambiguous (an entity with several meanings), state which \
-interpretation you're answering and briefly name the alternatives.
+    def add(self, u: Any) -> None:
+        """Add one response's ``usage`` object (fields may be missing/None)."""
+        self.input_tokens += getattr(u, "input_tokens", 0) or 0
+        self.output_tokens += getattr(u, "output_tokens", 0) or 0
+        self.cache_read_input_tokens += getattr(u, "cache_read_input_tokens", 0) or 0
+        self.cache_creation_input_tokens += getattr(u, "cache_creation_input_tokens", 0) or 0
 
-6. BE CONCISE. Lead with the direct answer, then a sentence or two of support, \
-then your citation.
 
-You cannot answer questions about private, personal, real-time, or future \
-information that Wikipedia would not contain — say so plainly."""
+@dataclass
+class AgentResult:
+    """An answer plus the trace needed to display and grade it."""
 
-TOOL_DEF = {
-    "name": "search_wikipedia",
-    "description": (
-        "Search English Wikipedia and return the top matching articles, each "
-        "with its title, URL, and a plain-text extract of the article's "
-        "introduction. Call this to look up factual, current, or specific "
-        "information before answering. Use concise entity/topic search terms. "
-        "You may call it multiple times to refine a query or to follow up on a "
-        "different entity in a multi-step question."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Concise search terms (an entity or topic), not a full sentence.",
-            }
-        },
-        "required": ["query"],
-    },
-}
+    answer: str
+    tool_calls: List[ToolCall]
+    n_model_calls: int
+    stop_reason: str
+    usage: Usage = field(default_factory=Usage)
+
+    @property
+    def searched(self) -> bool:
+        return len(self.tool_calls) > 0
+
+    @property
+    def retrieved_context(self) -> str:
+        """Concatenated tool output — what faithfulness is graded against."""
+        return "\n\n".join(tc.result_text for tc in self.tool_calls)
 
 
 def _text_of(content_blocks: List[Any]) -> str:
@@ -93,21 +81,19 @@ def answer_question(
     question: str,
     model: str = DEFAULT_MODEL,
     client: Optional[anthropic.Anthropic] = None,
-) -> Dict[str, Any]:
-    """Answer ``question`` with Wikipedia grounding.
-
-    Returns a dict with the answer plus a trace:
-        answer, searched, tool_calls (query/result_titles/result_text),
-        retrieved_context, n_model_calls, stop_reason.
-    """
+) -> AgentResult:
+    """Answer ``question`` with Wikipedia grounding, returning an ``AgentResult``."""
     if client is None:
         if not os.getenv("ANTHROPIC_API_KEY"):
             raise RuntimeError("ANTHROPIC_API_KEY is not set. Export it before running.")
         client = anthropic.Anthropic()
 
+    # system / messages / tool_results stay plain dicts: they are the Anthropic
+    # SDK's wire format, not our own data model.
     system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
     messages: List[Dict[str, Any]] = [{"role": "user", "content": question}]
-    tool_calls: List[Dict[str, Any]] = []
+    tool_calls: List[ToolCall] = []
+    usage = Usage()
     n_model_calls = 0
     last_text = ""
 
@@ -120,10 +106,11 @@ def answer_question(
             messages=messages,
         )
         n_model_calls += 1
+        usage.add(resp.usage)
         last_text = _text_of(resp.content) or last_text
 
         if resp.stop_reason != "tool_use":
-            return _result(last_text, tool_calls, n_model_calls, resp.stop_reason)
+            return AgentResult(last_text, tool_calls, n_model_calls, resp.stop_reason, usage)
 
         # Execute every tool_use block in this turn, return all results together.
         messages.append({"role": "assistant", "content": resp.content})
@@ -134,34 +121,44 @@ def answer_question(
             query = (block.input or {}).get("query", "")
             try:
                 hits = search_wikipedia(query)
-                result_text = format_results(query, hits)
-                titles = [h.title for h in hits]
-                is_error = False
+                call = ToolCall(query, [h.title for h in hits], format_results(query, hits))
             except Exception as exc:  # network/API hiccup — tell the model, let it adapt
-                result_text = f"search_wikipedia failed: {exc}"
-                titles = []
-                is_error = True
-            tool_calls.append({"query": query, "result_titles": titles, "result_text": result_text})
+                call = ToolCall(query, [], f"search_wikipedia failed: {exc}", is_error=True)
+            tool_calls.append(call)
             tool_results.append(
                 {
                     "type": "tool_result",
                     "tool_use_id": block.id,
-                    "content": result_text,
-                    "is_error": is_error,
+                    "content": call.result_text,
+                    "is_error": call.is_error,
                 }
             )
         messages.append({"role": "user", "content": tool_results})
 
-    # Ran out of turns; return whatever text we last produced.
-    return _result(last_text, tool_calls, n_model_calls, "max_turns")
-
-
-def _result(answer, tool_calls, n_model_calls, stop_reason) -> Dict[str, Any]:
-    return {
-        "answer": answer,
-        "searched": len(tool_calls) > 0,
-        "tool_calls": tool_calls,
-        "retrieved_context": "\n\n".join(tc["result_text"] for tc in tool_calls),
-        "n_model_calls": n_model_calls,
-        "stop_reason": stop_reason,
-    }
+    # Turn budget exhausted while the model still wanted to search. Tell it the
+    # search limit is reached, then force one final tool-free call so we always
+    # synthesize an answer from what we gathered, instead of returning a
+    # leftover preamble (or nothing). (Haiku 4.5 doesn't support mid-conversation
+    # system messages, so this goes in a user turn.)
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "You have reached the search limit and cannot search again. Give "
+                "your best final answer using only the information already "
+                "retrieved above. If it is insufficient, say what you found and "
+                "what remains unconfirmed. Do not propose further searches."
+            ),
+        }
+    )
+    resp = client.messages.create(
+        model=model,
+        max_tokens=MAX_TOKENS,
+        system=system,
+        tools=[TOOL_DEF],
+        tool_choice={"type": "none"},
+        messages=messages,
+    )
+    n_model_calls += 1
+    usage.add(resp.usage)
+    return AgentResult(_text_of(resp.content) or last_text, tool_calls, n_model_calls, "max_turns", usage)
