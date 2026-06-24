@@ -5,14 +5,21 @@
     python -m wiki_agent.evals.run_evals --category temporal
     python -m wiki_agent.evals.run_evals --no-judge     # agent + programmatic only
 
-Each run writes two files (shared timestamp) to wiki_agent/evals/results/:
-    run_<ts>.json     per-case detail (answer, trace, judgment)
-    report_<ts>.json  aggregated metrics (diff these across iterations)
+Metrics (note the DIFFERENT denominators — each metric is scoped to the cases
+where it is meaningful):
 
-Reports two layers:
-  - programmatic (deterministic, from the trace): tool-use appropriateness,
-    abstention accuracy, avg # searches, avg tokens.
-  - LLM judge: correctness / faithfulness / citation by dimension and category.
+  pass_rate                 passing cases / all judged cases
+  grounding_violation_rate  cases that didn't search / cases where should_search=true
+  query_quality             mean(good=1/adequate=.5/poor=0) / cases that searched
+  faithfulness (micro)      Σ supported claims / Σ total claims, over cases that
+                            searched AND answered substantively (claim-level)
+
+A case "passes" when it does everything right for its category: grounded when it
+should be, correct, and (per category) disambiguated / premise-corrected /
+abstained, with no contradicted claims and faithfulness >= threshold.
+
+Each run writes run_<ts>.json (per-case detail) and report_<ts>.json (aggregates)
+to wiki_agent/evals/results/.
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import anthropic
 
@@ -32,8 +39,10 @@ from .judge import judge_answer
 
 CASES_PATH = Path(__file__).with_name("cases.jsonl")
 RESULTS_DIR = Path(__file__).with_name("results")
+
 _CORRECT = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
-_FAITH = {"grounded": 1.0, "partial": 0.5, "unsupported": 0.0}
+_QQ = {"good": 1.0, "adequate": 0.5, "poor": 0.0}
+_FAITH_PASS_THRESHOLD = 0.8
 
 
 def load_cases(path: Path) -> List[Dict[str, Any]]:
@@ -41,7 +50,77 @@ def load_cases(path: Path) -> List[Dict[str, Any]]:
 
 
 def _pct(num: float, den: float) -> str:
-    return f"{(100 * num / den):.0f}%" if den else "  -"
+    return f"{(100 * num / den):.0f}%" if den else "  n/a"
+
+
+def _mean(xs: List[float]) -> Optional[float]:
+    return (sum(xs) / len(xs)) if xs else None
+
+
+def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute per-case metrics. ``judgment`` is the judge's model_dump dict (or None)."""
+    searched = result.searched
+    should_search = bool(case.get("should_search"))
+    should_abstain = bool(case.get("should_abstain"))
+
+    # Grounding: only a violation when the case *should* have searched and didn't.
+    grounding_applicable = should_search
+    grounding_violation = should_search and not searched
+
+    qq_score = None
+    faithfulness = None
+    supported = contradicted = total_claims = 0
+    faith_applicable = False
+    passed = None
+
+    if judgment is not None:
+        if searched:
+            qq_score = _QQ.get(judgment.get("query_quality"))  # None when not_applicable
+
+        claims = judgment.get("claims") or []
+        supported = sum(1 for c in claims if c.get("label") == "supported")
+        contradicted = sum(1 for c in claims if c.get("label") == "contradicted")
+        total_claims = len(claims)
+        # Faithfulness only applies when the agent searched AND made substantive claims.
+        faith_applicable = searched and not judgment.get("abstained") and total_claims > 0
+        if faith_applicable:
+            faithfulness = supported / total_claims
+
+        passed = _passes(case, judgment, grounding_violation, faithfulness, contradicted)
+
+    return {
+        "searched": searched,
+        "should_search": should_search,
+        "should_abstain": should_abstain,
+        "grounding_applicable": grounding_applicable,
+        "grounding_violation": grounding_violation,
+        "query_quality": judgment.get("query_quality") if judgment else None,
+        "query_quality_score": qq_score,
+        "claims_supported": supported,
+        "claims_contradicted": contradicted,
+        "claims_unsupported": total_claims - supported - contradicted,
+        "claims_total": total_claims,
+        "faith_applicable": faith_applicable,
+        "faithfulness": faithfulness,
+        "passed": passed,
+    }
+
+
+def _passes(case, j, grounding_violation, faithfulness, contradicted) -> bool:
+    cat = case["category"]
+    if grounding_violation:
+        return False
+    if bool(case.get("should_abstain")) and not j.get("abstained"):
+        return False
+    if cat == "ambiguous" and j.get("disambiguated") != "yes":
+        return False
+    if cat == "false_premise" and j.get("premise_handled") != "yes":
+        return False
+    if j.get("correctness") != "correct":
+        return False
+    if faithfulness is not None and (contradicted > 0 or faithfulness < _FAITH_PASS_THRESHOLD):
+        return False
+    return True
 
 
 def run(args) -> None:
@@ -62,128 +141,169 @@ def run(args) -> None:
     print(f"Running {len(cases)} case(s) | agent={args.model} | judge={'off' if args.no_judge else 'claude-opus-4-8'}\n")
     for case in cases:
         result = answer_question(case["question"], model=args.model, client=client)
-        judgment = None if args.no_judge else judge_answer(case, result, client=client)
+        judgment_obj = None if args.no_judge else judge_answer(case, result, client=client)
+        judgment = judgment_obj.model_dump() if judgment_obj else None
+        metrics = score_case(case, result, judgment)
 
-        # Programmatic check: did tool-use match expectations?
-        exp = case.get("should_search")
-        search_ok = None if exp is None else (result.searched == exp)
-        abstain_ok = (bool(judgment.abstained) == bool(case.get("should_abstain"))) if judgment else None
+        rows.append(
+            {
+                "id": case["id"],
+                "category": case["category"],
+                "question": case["question"],
+                "answer": result.answer,
+                "n_searches": len(result.tool_calls),
+                "queries": [tc.query for tc in result.tool_calls],
+                "tokens": {"input": result.usage.input_tokens, "output": result.usage.output_tokens},
+                "metrics": metrics,
+                "judgment": judgment,
+            }
+        )
 
-        row = {
-            "id": case["id"],
-            "category": case["category"],
-            "question": case["question"],
-            "answer": result.answer,
-            "searched": result.searched,
-            "n_searches": len(result.tool_calls),
-            "queries": [tc.query for tc in result.tool_calls],
-            "tokens": {
-                "input": result.usage.input_tokens,
-                "output": result.usage.output_tokens,
-                "cache_read": result.usage.cache_read_input_tokens,
-            },
-            "search_ok": search_ok,
-            "abstain_ok": abstain_ok,
-            "judgment": judgment.model_dump() if judgment else None,
-        }
-        rows.append(row)
-
-        c = judgment.correctness if judgment else "?"
-        flags = []
-        if search_ok is False:
-            flags.append("SEARCH-MISMATCH")
-        if abstain_ok is False:
-            flags.append("ABSTAIN-MISMATCH")
-        flag_str = ("  ⚠ " + ",".join(flags)) if flags else ""
-        print(f"  [{case['id']:<16}] correctness={c:<9} searches={len(result.tool_calls)}{flag_str}")
+        _print_case_line(rows[-1])
 
     aggregates = _report(rows, args)
     _write_outputs(rows, aggregates, args)
 
 
+def _print_case_line(row: Dict[str, Any]) -> None:
+    m = row["metrics"]
+    j = row["judgment"]
+    verdict = "----" if m["passed"] is None else ("PASS" if m["passed"] else "FAIL")
+    corr = (j or {}).get("correctness", "?")
+    faith = f"{m['faithfulness']:.2f}" if m["faithfulness"] is not None else " n/a"
+    flags = []
+    if m["grounding_violation"]:
+        flags.append("GROUNDING")
+    if m["claims_contradicted"]:
+        flags.append(f"{m['claims_contradicted']}xCONTRADICTED")
+    flag_str = ("  ⚠ " + ",".join(flags)) if flags else ""
+    print(f"  [{row['id']:<12}] {verdict}  {corr:<9} faith={faith} qq={(m['query_quality'] or '-'):<14} n={row['n_searches']}{flag_str}")
+
+
 def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
-    """Print the report and return the aggregated metrics (single source of truth)."""
+    """Print the report and return aggregated metrics (single source of truth)."""
     n = len(rows)
-    avg_searches = sum(r["n_searches"] for r in rows) / n
     avg_in = sum(r["tokens"]["input"] for r in rows) / n
     avg_out = sum(r["tokens"]["output"] for r in rows) / n
-    search_checked = [r for r in rows if r["search_ok"] is not None]
-    search_pass = sum(1 for r in search_checked if r["search_ok"])
-    abstain_checked = [r for r in rows if r["abstain_ok"] is not None]
-    abstain_pass = sum(1 for r in abstain_checked if r["abstain_ok"])
+    avg_searches = sum(r["n_searches"] for r in rows) / n
 
-    print("\n" + "=" * 70 + "\nPROGRAMMATIC (from trace)\n" + "-" * 70)
-    print(f"  avg searches/question      : {avg_searches:.2f}")
-    print(f"  avg tokens/question        : {avg_in:.0f} in / {avg_out:.0f} out")
-    print(f"  tool-use appropriateness   : {_pct(search_pass, len(search_checked))}  ({search_pass}/{len(search_checked)})")
-    print(f"  abstention accuracy        : {_pct(abstain_pass, len(abstain_checked))}  ({abstain_pass}/{len(abstain_checked)})")
+    # Grounding — denominator: cases that should have searched.
+    g_rows = [r for r in rows if r["metrics"]["grounding_applicable"]]
+    g_viol = sum(1 for r in g_rows if r["metrics"]["grounding_violation"])
+
+    print("\n" + "=" * 72 + "\nGROUNDING & EFFICIENCY (from trace)\n" + "-" * 72)
+    print(f"  grounding-violation rate   : {_pct(g_viol, len(g_rows))}  ({g_viol}/{len(g_rows)} should-search cases)  [lower better]")
+    print(f"  avg searches / question    : {avg_searches:.2f}")
+    print(f"  avg tokens / question      : {avg_in:.0f} in / {avg_out:.0f} out")
 
     agg: Dict[str, Any] = {
         "n_cases": n,
-        "programmatic": {
-            "avg_searches": round(avg_searches, 2),
-            "avg_input_tokens": round(avg_in),
-            "avg_output_tokens": round(avg_out),
-            "tool_use_appropriateness": {"pass": search_pass, "n": len(search_checked)},
-            "abstention_accuracy": {"pass": abstain_pass, "n": len(abstain_checked)},
-        },
+        "grounding": {"violation_rate": _ratio(g_viol, len(g_rows)), "violations": g_viol, "n_should_search": len(g_rows)},
+        "efficiency": {"avg_searches": round(avg_searches, 2), "avg_input_tokens": round(avg_in), "avg_output_tokens": round(avg_out)},
         "judge": None,
     }
 
-    if args.no_judge:
+    judged = [r for r in rows if r["judgment"] is not None]
+    if args.no_judge or not judged:
+        if not args.no_judge:
+            print("\n(no valid judgments)")
         return agg
 
-    judged = [r for r in rows if r["judgment"] and "correctness" in r["judgment"]]
-    if not judged:
-        print("\n(no valid judgments)")
-        return agg
+    # pass_rate — denominator: all judged cases.
+    n_pass = sum(1 for r in judged if r["metrics"]["passed"])
 
-    corr = sum(_CORRECT.get(r["judgment"]["correctness"], 0) for r in judged) / len(judged)
-    faith_rows = [r for r in judged if r["judgment"].get("faithfulness") in _FAITH]
-    faith = (sum(_FAITH[r["judgment"]["faithfulness"]] for r in faith_rows) / len(faith_rows)) if faith_rows else 0
-    cite_rows = [r for r in judged if not r["judgment"].get("abstained")]
-    cite_present = sum(1 for r in cite_rows if r["judgment"].get("citation") == "present")
-    fp_rows = [r for r in judged if r["category"] == "false_premise"]
-    fp_pass = sum(1 for r in fp_rows if r["judgment"].get("premise_handled") == "yes")
+    # query_quality — denominator: cases that searched (and produced a score).
+    qq_scores = [r["metrics"]["query_quality_score"] for r in judged if r["metrics"]["searched"] and r["metrics"]["query_quality_score"] is not None]
 
-    print("\n" + "=" * 70 + "\nJUDGE — overall\n" + "-" * 70)
-    print(f"  correctness (weighted)     : {corr * 100:.0f}%")
-    print(f"  faithfulness (where applic): {faith * 100:.0f}%  (n={len(faith_rows)})")
+    # faithfulness — denominator: cases that searched + answered substantively.
+    faith_rows = [r for r in judged if r["metrics"]["faith_applicable"]]
+    sup = sum(r["metrics"]["claims_supported"] for r in faith_rows)
+    contra = sum(r["metrics"]["claims_contradicted"] for r in faith_rows)
+    tot = sum(r["metrics"]["claims_total"] for r in faith_rows)
+    unsup = tot - sup - contra
+    faith_micro = _ratio(sup, tot)
+    faith_macro = _mean([r["metrics"]["faithfulness"] for r in faith_rows])
+
+    # supporting behaviour metrics
+    corr_weighted = _mean([_CORRECT.get(r["judgment"]["correctness"], 0) for r in judged])
+    abstain_ok = sum(1 for r in judged if bool(r["judgment"]["abstained"]) == r["metrics"]["should_abstain"])
+    cite_rows = [r for r in judged if not r["judgment"]["abstained"]]
+    cite_present = sum(1 for r in cite_rows if r["judgment"]["citation"] == "present")
+    ambig = [r for r in judged if r["category"] == "ambiguous"]
+    ambig_ok = sum(1 for r in ambig if r["judgment"]["disambiguated"] == "yes")
+    fp = [r for r in judged if r["category"] == "false_premise"]
+    fp_ok = sum(1 for r in fp if r["judgment"]["premise_handled"] == "yes")
+
+    print("\n" + "=" * 72 + f"\nPASS RATE\n" + "-" * 72)
+    print(f"  pass_rate                  : {_pct(n_pass, len(judged))}  ({n_pass}/{len(judged)})")
+
+    print("\n" + "=" * 72 + "\nQUERY QUALITY (cases that searched)\n" + "-" * 72)
+    print(f"  mean query quality         : {_pct(sum(qq_scores), len(qq_scores))}  (n={len(qq_scores)})")
+
+    print("\n" + "=" * 72 + "\nFAITHFULNESS (searched + substantive; claim-level)\n" + "-" * 72)
+    print(f"  faithfulness (micro)       : {_pct(sup, tot)}  ({sup} supported / {tot} claims)")
+    print(f"  faithfulness (macro)       : {_pct((faith_macro or 0), 1)}  (n={len(faith_rows)} answers)")
+    print(f"  claim labels               : {sup} supported / {unsup} unsupported / {contra} contradicted")
+
+    print("\n" + "=" * 72 + "\nCORRECTNESS & BEHAVIOUR\n" + "-" * 72)
+    print(f"  correctness (weighted)     : {_pct((corr_weighted or 0), 1)}")
+    print(f"  abstention accuracy        : {_pct(abstain_ok, len(judged))}  ({abstain_ok}/{len(judged)})")
+    print(f"  disambiguation             : {_pct(ambig_ok, len(ambig))}  ({ambig_ok}/{len(ambig)})")
+    print(f"  false-premise handled      : {_pct(fp_ok, len(fp))}  ({fp_ok}/{len(fp)})")
     print(f"  citation present           : {_pct(cite_present, len(cite_rows))}  ({cite_present}/{len(cite_rows)})")
-    print(f"  false-premise handled      : {_pct(fp_pass, len(fp_rows))}  ({fp_pass}/{len(fp_rows)})")
 
-    print("\n" + "=" * 70 + "\nJUDGE — correctness by category\n" + "-" * 70)
-    by_cat: Dict[str, List[float]] = defaultdict(list)
+    print("\n" + "=" * 72 + "\nPASS RATE BY CATEGORY\n" + "-" * 72)
+    by_cat: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for r in judged:
-        by_cat[r["category"]].append(_CORRECT.get(r["judgment"]["correctness"], 0))
-    cat_scores = {}
+        by_cat[r["category"]].append(r)
+    cat_summary = {}
     for cat in sorted(by_cat):
-        scores = by_cat[cat]
-        cat_scores[cat] = {"score": round(sum(scores) / len(scores), 3), "n": len(scores)}
-        print(f"  {cat:<22} {sum(scores) / len(scores) * 100:>4.0f}%  (n={len(scores)})")
+        crows = by_cat[cat]
+        cpass = sum(1 for r in crows if r["metrics"]["passed"])
+        c_faith_rows = [r for r in crows if r["metrics"]["faith_applicable"]]
+        c_sup = sum(r["metrics"]["claims_supported"] for r in c_faith_rows)
+        c_tot = sum(r["metrics"]["claims_total"] for r in c_faith_rows)
+        cat_summary[cat] = {
+            "pass_rate": _ratio(cpass, len(crows)),
+            "n": len(crows),
+            "faithfulness_micro": _ratio(c_sup, c_tot),
+        }
+        print(f"  {cat:<16} pass {_pct(cpass, len(crows)):>4}  ({cpass}/{len(crows)})   faith {_pct(c_sup, c_tot):>4}")
 
     agg["judge"] = {
         "n_judged": len(judged),
-        "correctness_weighted": round(corr, 3),
-        "faithfulness": {"score": round(faith, 3), "n": len(faith_rows)},
+        "pass_rate": _ratio(n_pass, len(judged)),
+        "query_quality_mean": round(_mean(qq_scores) or 0, 3),
+        "query_quality_n": len(qq_scores),
+        "faithfulness": {
+            "micro": faith_micro,
+            "macro": round(faith_macro, 3) if faith_macro is not None else None,
+            "n_answers": len(faith_rows),
+            "claims": {"supported": sup, "unsupported": unsup, "contradicted": contra, "total": tot},
+        },
+        "correctness_weighted": round(corr_weighted, 3) if corr_weighted is not None else None,
+        "abstention_accuracy": {"pass": abstain_ok, "n": len(judged)},
+        "disambiguation": {"pass": ambig_ok, "n": len(ambig)},
+        "false_premise_handled": {"pass": fp_ok, "n": len(fp)},
         "citation_present": {"pass": cite_present, "n": len(cite_rows)},
-        "false_premise_handled": {"pass": fp_pass, "n": len(fp_rows)},
-        "correctness_by_category": cat_scores,
+        "by_category": cat_summary,
     }
     return agg
+
+
+def _ratio(num: float, den: float) -> Optional[float]:
+    return round(num / den, 3) if den else None
 
 
 def _write_outputs(rows: List[Dict[str, Any]], aggregates: Dict[str, Any], args) -> None:
     out_dir = Path(args.out_dir) if args.out_dir else RESULTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = f"{datetime.datetime.now():%Y%m%d_%H%M%S}"
-    run_path = out_dir / f"run_{ts}.json"
-    report_path = out_dir / f"report_{ts}.json"
     meta = {"timestamp": ts, "model": args.model, "n_cases": len(rows), "judge": not args.no_judge}
-    run_path.write_text(json.dumps({**meta, "rows": rows}, indent=2))
-    report_path.write_text(json.dumps({**meta, "report": aggregates}, indent=2))
-    print(f"\nPer-case results : {run_path}")
-    print(f"Aggregated report: {report_path}")
+    (out_dir / f"run_{ts}.json").write_text(json.dumps({**meta, "rows": rows}, indent=2))
+    (out_dir / f"report_{ts}.json").write_text(json.dumps({**meta, "report": aggregates}, indent=2))
+    print(f"\nPer-case results : {out_dir / f'run_{ts}.json'}")
+    print(f"Aggregated report: {out_dir / f'report_{ts}.json'}")
 
 
 def main(argv=None) -> int:

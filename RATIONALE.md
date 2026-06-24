@@ -51,42 +51,108 @@ We run a **manual agentic loop**, not the SDK tool-runner, so we capture the ful
 trace — needed to show whether search was used and to grade faithfulness against
 the actually-retrieved text.
 
-## Eval suite design — dimensions and why
+## Eval suite design — metrics and why
 
-A single accuracy number hides what matters in RAG. We measure six things:
+A single accuracy number hides what matters in RAG, so the harness reports a
+**headline `pass_rate`** and then decomposes failure into per-component metrics.
+The key design point is that **each metric has a different denominator** — it is
+scored only over the cases where it is meaningful, so one component's failures
+don't distort another's.
 
-| Dimension | Why it matters | How graded |
-|---|---|---|
-| **Correctness** | the headline — is the answer right? | LLM judge vs. gold key facts |
-| **Faithfulness** | the *point* of grounding — supported by retrieved text, not parametric memory | LLM judge, given the retrieved snippets |
-| **Citation** | verifiability / trust | LLM judge + programmatic |
-| **Tool-use appropriateness** | searched when it should, skipped trivial searches | programmatic, from trace |
-| **Abstention accuracy** | calibration on unanswerable questions | programmatic (judge flag vs. expected) |
-| **False-premise handling** | does it push back instead of confabulating? | LLM judge |
+| Metric | What it isolates | Numerator / **Denominator** | Source |
+|---|---|---|---|
+| **pass_rate** | did the agent do *everything* right for this case | passing cases / **all judged cases** | composite |
+| **grounding_violation_rate** | did it search when it should have | non-searching cases / **cases where `should_search=true`** | trace |
+| **query_quality** | did its queries retrieve the needed content | mean(good=1/adequate=.5/poor=0) / **cases that searched** | judge |
+| **faithfulness** | did it use the retrieved content (vs. priors) | **Σ supported claims / Σ total claims** over **cases that searched + answered substantively** | judge, claim-level |
+
+Supporting metrics (correctness, abstention accuracy, disambiguation,
+false-premise handling, citation) round out behaviour.
+
+**Faithfulness is claim-level.** Rather than ask the judge for one fuzzy
+faithfulness score, it decomposes the answer into atomic claims and labels each
+`supported` / `unsupported` / `contradicted` against the *retrieved text*;
+faithfulness is then `supported / total`. This is the only reliable way to catch
+an answer that is correct but smuggles in unretrieved facts — and it surfaces
+*contradicted* claims (active hallucination) separately from merely unsupported
+ones.
+
+**A case "passes"** only if it does everything right *for its category*:
+grounded when it should be, correct, with no contradicted claims and
+faithfulness ≥ 0.8, plus the category-specific behaviour (disambiguated /
+premise-corrected / abstained). pass_rate is therefore a strict conjunction — a
+deliberately demanding headline.
 
 **Grading is two-layered.** Programmatic checks read the trace (deterministic,
-cheap, no judge needed): did a search happen, how many, did it abstain.
-LLM-as-judge (Opus 4.8, strict JSON rubric) scores the open-ended dimensions,
-and crucially is shown the *retrieved context* so faithfulness is graded against
-what the model actually saw — an answer that's correct but unsupported by the
-retrieval is flagged.
+cheap): did it search, how many times, tokens. The Opus 4.8 judge (Pydantic
+structured output) handles the open-ended dimensions and is always shown the
+*queries* and the *retrieved context*, so faithfulness and query-quality are
+graded against what the agent actually did and saw.
 
-**Test taxonomy (~30 cases across 8 categories):** simple factual · multi-hop ·
-disambiguation · temporal/"current X" · unanswerable (must abstain) ·
-false-premise (must correct) · comparative · answerable-from-priors (does it
-still ground? does it over-search trivia?). The negative categories (abstain,
-false-premise) are where most systems quietly fail and where the eval earns its
-keep.
+**Test taxonomy (~28 cases across 7 categories), because category dictates the
+correct behaviour:** single-hop · multi-hop · aggregation (compare/aggregate over
+several entities) · temporal ("current X" — must not trust stale priors) ·
+ambiguous (must disambiguate) · unanswerable (must abstain) · false-premise (must
+correct). The negative categories (unanswerable, false-premise) and the
+behavioural ones (ambiguous) are where most systems quietly fail and where the
+eval earns its keep.
 
 ## Where it succeeds / where it fails
 
-_(to fill after eval runs — point at specific case IDs and judge rationales.)_
+Current baseline (28 cases, Haiku 4.5 agent / Opus 4.8 judge): **pass_rate 89%
+(25/28)** under the strict composite.
+
+**Succeeds.** Correctness 100%, abstention 100% (4/4 unanswerable), false-premise
+handling 100% (4/4), query_quality 100% (n=24), and **faithfulness 98% (129/132
+claims) with zero contradicted claims** — no active hallucination anywhere.
+multi_hop, temporal, and aggregation all pass 100%; multi-hop decomposition works
+(e.g. 2016 Olympics → Brazil → Brasília across two searches).
+
+**The three failures, each a different component:**
+- `single-03` (Fe→iron) — **grounding violation**: answered from memory, no search
+  (the lone 4% grounding violation). We deliberately don't add a case-specific
+  prompt example to force it — that's overfitting the prompt to the eval. A
+  small-model adherence limit, not a prompt gap.
+- `ambig-04` (Michael Jordan) — answered the athlete directly without noting other
+  notable namesakes → `disambiguated=no`. Borderline: arguably a fair test (the
+  name *is* ambiguous) or arguably fine (the athlete dominates). Flagged as an
+  eval-definition judgment, not silently "fixed."
+- `fp-04` (Beatles drummer) — correctly corrected the premise (Pete Best) but added
+  one ungrounded clarifying claim → faithfulness 0.75, below the 0.8 pass bar.
+
+**The finding the richer harness exposed:** faithfulness is 98%, not the 100% the
+old categorical metric reported. The 3 unsupported claims (`agg-04` Earth's
+diameter, `fp-03` "1776 = the Declaration", `fp-04` "Lennon was rhythm guitarist")
+are all peripheral facts the model volunteered *from memory* — true, but not in
+the retrieved text. The system is honest (no fabricated falsehoods) but
+occasionally garnishes with ungrounded-but-true detail. Claim-level faithfulness
+makes this visible; a single categorical score hid it entirely.
 
 ## Key iterations driven by eval results
 
-_(to fill — e.g. prompt wording changes, whether a `read_article` tool was added
-after observing intro-extract shallowness, judge-rubric fixes. Keep before/after
-metrics.)_
+**Iteration 1 — two prompt edits in `prompts.py`** (measured on the suite):
+- *Search-first boundary.* Reworded rule #1 from "search facts that may have
+  changed" to "always search any external-world fact, even if confident; only skip
+  pure arithmetic/logic." Removed the wiggle room the model used to answer stable
+  facts from memory → fixed capital-of-Australia, lifted citation and tool-use
+  (correctness 97% → 100%).
+- *Disambiguation.* The first attempt (tell it to list alternatives) failed because
+  the model resolves ambiguity at **query** time. The fix that worked: search the
+  **bare term first** (don't pre-narrow), so results reveal the meanings. This was
+  only diagnosable from the trace, and lifted disambiguation 75% → ~100% on
+  Mercury/Java/Cambridge.
+
+**Iteration in the eval itself — harness redesign.** Moved from six flat
+categorical dimensions to a headline **pass_rate** plus component metrics with
+**distinct denominators** (grounding-violation over should-search cases,
+query-quality over searched cases, claim-level faithfulness over searched+
+substantive cases). Re-baselining under it produced the more honest 89% pass_rate
+and the 98% claim-level faithfulness above.
+
+**Candidate iteration 2 (identified, not yet applied):** a prompt nudge to "state
+only facts present in the retrieved text — don't add tangential true-but-ungrounded
+context," which targets the three unsupported claims directly; plus a decision on
+whether strongly-dominant ambiguous terms (Michael Jordan) must still disambiguate.
 
 ## How I'd extend with more time
 
@@ -100,4 +166,6 @@ metrics.)_
 
 ## Time spent
 
-_(to fill — approximate hours.)_
+~3–4 hours of focused work: prototype + live MediaWiki retrieval, the agent loop,
+the eval harness, and two rounds of eval-driven iteration (prompt fixes, then the
+metric-framework redesign). _(Adjust to your actual time before submitting.)_
