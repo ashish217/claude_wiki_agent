@@ -72,6 +72,7 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
     supported = contradicted = total_claims = 0
     faith_applicable = False
     passed = None
+    fail_reasons = None
 
     if judgment is not None:
         if searched:
@@ -86,9 +87,11 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
         if faith_applicable:
             faithfulness = supported / total_claims
 
-        passed = _passes(case, judgment, grounding_violation, faithfulness, contradicted)
+        fail_reasons = _failure_reasons(case, judgment, grounding_violation, faithfulness, contradicted)
+        passed = len(fail_reasons) == 0
 
     return {
+        "fail_reasons": fail_reasons,
         "searched": searched,
         "should_search": should_search,
         "should_abstain": should_abstain,
@@ -106,21 +109,28 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
     }
 
 
-def _passes(case, j, grounding_violation, faithfulness, contradicted) -> bool:
+def _failure_reasons(case, j, grounding_violation, faithfulness, contradicted) -> List[str]:
+    """Every gate this case trips (empty list = pass). A case can fail for >1 reason,
+    so we collect all of them — that is what lets the report attribute the pass-rate
+    drop to specific causes rather than just the first failing check."""
     cat = case["category"]
+    reasons: List[str] = []
     if grounding_violation:
-        return False
+        reasons.append("grounding_violation")
     if bool(case.get("should_abstain")) and not j.get("abstained"):
-        return False
+        reasons.append("did_not_abstain")
     if cat == "ambiguous" and j.get("disambiguated") != "yes":
-        return False
+        reasons.append("not_disambiguated")
     if cat == "false_premise" and j.get("premise_handled") != "yes":
-        return False
-    if j.get("correctness") != "correct":
-        return False
-    if faithfulness is not None and (contradicted > 0 or faithfulness < _FAITH_PASS_THRESHOLD):
-        return False
-    return True
+        reasons.append("premise_not_handled")
+    corr = j.get("correctness")
+    if corr != "correct":
+        reasons.append("incorrect" if corr == "incorrect" else "partial_answer")
+    if faithfulness is not None and contradicted > 0:
+        reasons.append("contradicted_claim")
+    if faithfulness is not None and faithfulness < _FAITH_PASS_THRESHOLD:
+        reasons.append("low_faithfulness")
+    return reasons
 
 
 def run(args) -> None:
@@ -171,12 +181,7 @@ def _print_case_line(row: Dict[str, Any]) -> None:
     verdict = "----" if m["passed"] is None else ("PASS" if m["passed"] else "FAIL")
     corr = (j or {}).get("correctness", "?")
     faith = f"{m['faithfulness']:.2f}" if m["faithfulness"] is not None else " n/a"
-    flags = []
-    if m["grounding_violation"]:
-        flags.append("GROUNDING")
-    if m["claims_contradicted"]:
-        flags.append(f"{m['claims_contradicted']}xCONTRADICTED")
-    flag_str = ("  ⚠ " + ",".join(flags)) if flags else ""
+    flag_str = ("  ⚠ " + ", ".join(m["fail_reasons"])) if (m["passed"] is False and m["fail_reasons"]) else ""
     print(f"  [{row['id']:<12}] {verdict}  {corr:<9} faith={faith} qq={(m['query_quality'] or '-'):<14} n={row['n_searches']}{flag_str}")
 
 
@@ -211,6 +216,13 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
 
     # pass_rate — denominator: all judged cases.
     n_pass = sum(1 for r in judged if r["metrics"]["passed"])
+    # Failure attribution: which gate(s) each failing case tripped (a case can trip
+    # several), tallied so the report explains *what* dropped the pass-rate.
+    failures = [r for r in judged if r["metrics"]["passed"] is False]
+    reason_tally: Dict[str, int] = defaultdict(int)
+    for r in failures:
+        for reason in r["metrics"]["fail_reasons"]:
+            reason_tally[reason] += 1
 
     # query_quality — denominator: cases that searched (and produced a score).
     qq_scores = [r["metrics"]["query_quality_score"] for r in judged if r["metrics"]["searched"] and r["metrics"]["query_quality_score"] is not None]
@@ -236,6 +248,13 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
 
     print("\n" + "=" * 72 + f"\nPASS RATE\n" + "-" * 72)
     print(f"  pass_rate                  : {_pct(n_pass, len(judged))}  ({n_pass}/{len(judged)})")
+    if failures:
+        print(f"  failed: {len(failures)} — attributed to:")
+        for reason, cnt in sorted(reason_tally.items(), key=lambda kv: -kv[1]):
+            print(f"      {reason:<22} {cnt}")
+        print("  failing cases:")
+        for r in failures:
+            print(f"      {r['id']:<12} [{r['category']:<13}] {', '.join(r['metrics']['fail_reasons'])}")
 
     print("\n" + "=" * 72 + "\nQUERY QUALITY (cases that searched)\n" + "-" * 72)
     print(f"  mean query quality         : {_pct(sum(qq_scores), len(qq_scores))}  (n={len(qq_scores)})")
@@ -263,16 +282,30 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
         c_faith_rows = [r for r in crows if r["metrics"]["faith_applicable"]]
         c_sup = sum(r["metrics"]["claims_supported"] for r in c_faith_rows)
         c_tot = sum(r["metrics"]["claims_total"] for r in c_faith_rows)
+        creasons: Dict[str, int] = defaultdict(int)
+        for r in crows:
+            if r["metrics"]["passed"] is False:
+                for reason in r["metrics"]["fail_reasons"]:
+                    creasons[reason] += 1
         cat_summary[cat] = {
             "pass_rate": _ratio(cpass, len(crows)),
             "n": len(crows),
             "faithfulness_micro": _ratio(c_sup, c_tot),
+            "fail_reasons": dict(creasons),
         }
-        print(f"  {cat:<16} pass {_pct(cpass, len(crows)):>4}  ({cpass}/{len(crows)})   faith {_pct(c_sup, c_tot):>4}")
+        reason_str = ("   ← " + ", ".join(f"{k}×{v}" for k, v in sorted(creasons.items(), key=lambda kv: -kv[1]))) if creasons else ""
+        print(f"  {cat:<16} pass {_pct(cpass, len(crows)):>4}  ({cpass}/{len(crows)})   faith {_pct(c_sup, c_tot):>4}{reason_str}")
 
     agg["judge"] = {
         "n_judged": len(judged),
         "pass_rate": _ratio(n_pass, len(judged)),
+        "failures": {
+            "by_reason": dict(reason_tally),
+            "cases": [
+                {"id": r["id"], "category": r["category"], "reasons": r["metrics"]["fail_reasons"]}
+                for r in failures
+            ],
+        },
         "query_quality_mean": round(_mean(qq_scores) or 0, 3),
         "query_quality_n": len(qq_scores),
         "faithfulness": {

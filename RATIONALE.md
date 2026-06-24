@@ -81,7 +81,11 @@ ones.
 grounded when it should be, correct, with no contradicted claims and
 faithfulness ≥ 0.8, plus the category-specific behaviour (disambiguated /
 premise-corrected / abstained). pass_rate is therefore a strict conjunction — a
-deliberately demanding headline.
+deliberately demanding headline. When it dips, the report **attributes** every
+failure to the specific gate(s) it tripped (`grounding_violation`,
+`not_disambiguated`, `low_faithfulness`, `contradicted_claim`, …), tallied overall
+and per category — so a pass-rate drop is immediately diagnosable rather than
+opaque.
 
 **Grading is two-layered.** Programmatic checks read the trace (deterministic,
 cheap): did it search, how many times, tokens. The Opus 4.8 judge (Pydantic
