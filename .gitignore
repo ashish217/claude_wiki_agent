@@ -11,5 +11,7 @@ venv/
 *.egg-info/
 .DS_Store
 
-# eval run outputs (keep cases.jsonl, ignore generated results)
+# eval run outputs (keep cases.jsonl, ignore the generated results dir)
+wiki_agent/evals/results/
 wiki_agent/evals/results_*.json
+
