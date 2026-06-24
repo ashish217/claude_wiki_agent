@@ -1,0 +1,15 @@
+[project]
+name = "wiki-agent"
+version = "0.1.0"
+description = "Wikipedia-grounded question answering with Claude, plus an eval suite."
+requires-python = ">=3.9"
+dependencies = [
+    "anthropic>=0.40",
+    "requests>=2.31",
+]
+
+[tool.uv]
+# Manage dependencies into the venv but don't try to build/install this project
+# itself — it's run as a module (`python -m wiki_agent`), so no build backend
+# is needed.
+package = false
