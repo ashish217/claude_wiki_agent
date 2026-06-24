@@ -149,16 +149,43 @@ query-quality over searched cases, claim-level faithfulness over searched+
 substantive cases). Re-baselining under it produced the more honest 89% pass_rate
 and the 98% claim-level faithfulness above.
 
-**Candidate iteration 2 (identified, not yet applied):** a prompt nudge to "state
-only facts present in the retrieved text — don't add tangential true-but-ungrounded
-context," which targets the three unsupported claims directly; plus a decision on
-whether strongly-dominant ambiguous terms (Michael Jordan) must still disambiguate.
+**Iteration 2 — a faithfulness nudge that we measured, then *reverted*.** We added
+a rule #3 clause: "don't add tangential context from memory, even if true,"
+targeting the three unsupported claims. The eval verdict: **no measurable benefit**
+(faithfulness 98% → 94%, pass 89% → 86%) and **+32% input tokens** (one case went
+3 → 8 searches as the model tried to ground every aside). Crucially, the
+"regression" was **noise**: the set of unsupported claims was almost entirely
+different between the before/after runs. The honest read — *the eval couldn't yet
+resolve a change this small* — so we reverted the nudge and fixed the eval instead.
+This is the headline judgment call of the project: don't ship changes you can't
+measure; harden the measurement first.
+
+**Iteration 3 — eval reproducibility (`temperature=0`).** Pinned the agent at
+`temperature=0` (a factual QA system wants determinism anyway). Found along the
+way that **Opus 4.8 — our judge — rejects `temperature`** ("deprecated for this
+model"), so the judge can't be pinned the same way. Result, measured by running
+the suite twice:
+- The **agent is now stable** — identical search behaviour in 27/28 cases,
+  grounding-violation a stable 0%, citation stable 100%.
+- The **residual variance is judge-side**: the unpinnable judge re-decomposes
+  claims differently in 9/28 cases (e.g. an ambiguous answer scored as 15 vs 12
+  claims), which, against the 0.8 faithfulness pass-bar, flips pass on borderline
+  cases. pass_rate still swings ≈86–89%, faithfulness ≈94–96%.
+
+**The lesson:** agent determinism is necessary but not sufficient for a stable
+LLM-judge eval; with a granular claim-level metric the *judge* becomes the
+dominant noise source. The real fix is **multi-trial averaging** (report each
+metric as a mean ± range over N runs), which is the top eval extension below.
 
 ## How I'd extend with more time
 
+- **Multi-trial averaging (top priority).** Run each case N times and report every
+  metric as a mean ± range, so judge-side claim-decomposition noise (the dominant
+  residual variance) is averaged out and small prompt changes become measurable.
 - Add `read_article(title, section)` for deep facts not in the intro, gated on
-  observed failures.
-- Multi-judge or judge-vs-human spot-checks to quantify judge reliability.
+  observed failures (would also fix faithfulness false-positives like the correct
+  "Darwin born in England" claim that the shallow intro couldn't support).
+- Multi-judge panels or judge-vs-human spot-checks to quantify judge reliability.
 - Adversarial expansion of the false-premise and disambiguation sets.
 - Query-reformulation analysis (which query phrasings retrieve the gold article).
 - Latency/cost dashboard; prompt-cache the system+tools prefix (note: Haiku 4.5's

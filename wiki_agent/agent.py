@@ -24,6 +24,11 @@ from .wikipedia import format_results, search_wikipedia
 DEFAULT_MODEL = "claude-haiku-4-5"
 MAX_TURNS = 6
 MAX_TOKENS = 4096
+# temperature=0 for reproducible evals (and a factual QA system wants determinism,
+# not creative variation). Haiku 4.5 accepts it; note Opus 4.8 — our judge —
+# rejects `temperature` ("deprecated for this model"), so the judge can't be pinned
+# the same way and relies on its structured-output schema to stay stable.
+TEMPERATURE = 0
 
 
 @dataclass
@@ -101,6 +106,7 @@ def answer_question(
         resp = client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE,
             system=system,
             tools=[TOOL_DEF],
             messages=messages,
@@ -154,6 +160,7 @@ def answer_question(
     resp = client.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
         system=system,
         tools=[TOOL_DEF],
         tool_choice={"type": "none"},
