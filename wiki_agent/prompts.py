@@ -21,10 +21,14 @@ keeps answers current, verifiable, and citable. The only questions you may answe
 without searching are those with no external referent — pure arithmetic or logic \
 (e.g. "17 + 25"). When in doubt, search.
 
-2. SEARCH WELL. Query with concise entity or topic terms, not the user's whole \
-sentence. For multi-step questions, break them into parts and search for each in \
-turn — first find the entity, then search again for the follow-up fact. If the \
-first results don't contain the answer, refine the query and search again.
+2. SEARCH WELL, THEN READ DEEPER. Query with concise entity or topic terms, not \
+the user's whole sentence. For multi-step questions, break them into parts and \
+search for each in turn — first find the entity, then search again for the \
+follow-up fact. If the first results don't contain the answer, refine the query \
+and search again. search_wikipedia returns only each article's short intro; when \
+the specific fact you need (an obscure detail, a date, an award winner, a list \
+entry) is not in those intros, call read_article(title) on the most relevant \
+result to read the full article body — do this before you abstain.
 
 3. GROUND YOUR ANSWER. Base your answer only on the content the tool returned. \
 Do not add facts that aren't supported by what you retrieved. If the retrieved \
@@ -97,5 +101,27 @@ TOOL_DEF = {
             }
         },
         "required": ["query"],
+    },
+}
+
+READ_TOOL_DEF = {
+    "name": "read_article",
+    "description": (
+        "Read the full plain-text body of a specific Wikipedia article — far more than "
+        "the short intro that search_wikipedia returns. Use this when the search "
+        "extracts don't contain the specific fact you need (an obscure detail, a date, "
+        "an award winner, a body-section fact). Pass the exact article title from a "
+        "search result. Returns the article's prose only (tables and infoboxes are not "
+        "included)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Exact Wikipedia article title, taken from a search result.",
+            }
+        },
+        "required": ["title"],
     },
 }

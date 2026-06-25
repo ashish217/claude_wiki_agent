@@ -5,6 +5,6 @@ Public surface:
 """
 
 from .agent import answer_question
-from .wikipedia import search_wikipedia
+from .wikipedia import read_article, search_wikipedia
 
-__all__ = ["answer_question", "search_wikipedia"]
+__all__ = ["answer_question", "read_article", "search_wikipedia"]

@@ -86,3 +86,44 @@ def format_results(query: str, results: List[WikiResult]) -> str:
     for i, r in enumerate(results, 1):
         blocks.append(f"[{i}] {r.title} — {r.url}\n{r.extract}")
     return "\n\n".join(blocks)
+
+
+def read_article(title: str, max_chars: int = 8000, timeout: float = 15.0):
+    """Return ``(resolved_title, full plain-text prose)`` for an article, or ``None``.
+
+    Unlike search_wikipedia (intro extract only), this returns the whole article's
+    prose so the model can reach facts buried in body sections. Note: ``extracts``
+    excludes tables, infoboxes, and reference lists — prose only.
+    """
+    params = {
+        "action": "query",
+        "format": "json",
+        "formatversion": "2",
+        "prop": "extracts",
+        "explaintext": "1",
+        "redirects": "1",
+        "titles": title,
+    }
+    resp = _session.get(_API, params=params, timeout=timeout)
+    resp.raise_for_status()
+    pages = resp.json().get("query", {}).get("pages", [])
+    if not pages or pages[0].get("missing") is True:
+        return None
+    page = pages[0]
+    text = (page.get("extract") or "").strip()
+    if not text:
+        return None
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "\n\n[… article truncated; this is the beginning of the article …]"
+    return page.get("title", title), text
+
+
+def format_article(title: str, result) -> str:
+    """Render read_article output into the text block returned to the model."""
+    if not result:
+        return (
+            f'No Wikipedia article found with the exact title "{title}". '
+            "Use search_wikipedia first to find the correct title."
+        )
+    resolved, text = result
+    return f"Full Wikipedia article — {resolved}:\n\n{text}"

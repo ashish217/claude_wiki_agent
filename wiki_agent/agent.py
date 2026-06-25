@@ -15,15 +15,15 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
-from .prompts import TOOL_DEF, build_system_prompt
-from .wikipedia import format_results, search_wikipedia
+from .prompts import READ_TOOL_DEF, TOOL_DEF, build_system_prompt
+from .wikipedia import format_article, format_results, read_article, search_wikipedia
 
 # Claude Haiku 4.5 — the agent model. Deliberately a small model: it makes the
 # system prompt do the work, which is the point of the exercise. Note Haiku 4.5
 # does NOT support adaptive thinking or the effort param (those are 4.6+), so
 # the loop runs without thinking and the prompt carries all the behaviour.
 DEFAULT_MODEL = "claude-haiku-4-5"
-MAX_TURNS = 6
+MAX_TURNS = 8  # room for search -> read_article -> answer sequences on multi-hop
 MAX_TOKENS = 4096
 # temperature=0 for reproducible evals (and a factual QA system wants determinism,
 # not creative variation). Haiku 4.5 accepts it; note Opus 4.8 — our judge —
@@ -34,9 +34,10 @@ TEMPERATURE = 0
 
 @dataclass
 class ToolCall:
-    """One search_wikipedia invocation and what it returned."""
+    """One tool invocation (search_wikipedia or read_article) and what it returned."""
 
-    query: str
+    tool: str  # "search_wikipedia" | "read_article"
+    query: str  # search terms, or the article title for read_article
     result_titles: List[str]
     result_text: str
     is_error: bool = False
@@ -115,7 +116,7 @@ def answer_question(
             max_tokens=MAX_TOKENS,
             temperature=TEMPERATURE,
             system=system,
-            tools=[TOOL_DEF],
+            tools=[TOOL_DEF, READ_TOOL_DEF],
             messages=messages,
         )
         n_model_calls += 1
@@ -126,17 +127,28 @@ def answer_question(
             return AgentResult(last_text, tool_calls, n_model_calls, resp.stop_reason, usage)
 
         # Execute every tool_use block in this turn, return all results together.
+        # Every tool_use block must get a tool_result (else the next request 400s),
+        # so unknown tools get an error result rather than being dropped.
         messages.append({"role": "assistant", "content": resp.content})
         tool_results = []
         for block in resp.content:
-            if getattr(block, "type", None) != "tool_use" or block.name != "search_wikipedia":
+            if getattr(block, "type", None) != "tool_use":
                 continue
-            query = (block.input or {}).get("query", "")
+            name = block.name
+            inp = block.input or {}
             try:
-                hits = search_wikipedia(query)
-                call = ToolCall(query, [h.title for h in hits], format_results(query, hits))
+                if name == "search_wikipedia":
+                    query = inp.get("query", "")
+                    hits = search_wikipedia(query)
+                    call = ToolCall(name, query, [h.title for h in hits], format_results(query, hits))
+                elif name == "read_article":
+                    title = inp.get("title", "")
+                    res = read_article(title)
+                    call = ToolCall(name, title, [res[0]] if res else [], format_article(title, res))
+                else:
+                    call = ToolCall(name, str(inp), [], f"Unknown tool: {name}", is_error=True)
             except Exception as exc:  # network/API hiccup — tell the model, let it adapt
-                call = ToolCall(query, [], f"search_wikipedia failed: {exc}", is_error=True)
+                call = ToolCall(name, str(inp), [], f"{name} failed: {exc}", is_error=True)
             tool_calls.append(call)
             tool_results.append(
                 {
@@ -169,7 +181,7 @@ def answer_question(
         max_tokens=MAX_TOKENS,
         temperature=TEMPERATURE,
         system=system,
-        tools=[TOOL_DEF],
+        tools=[TOOL_DEF, READ_TOOL_DEF],
         tool_choice={"type": "none"},
         messages=messages,
     )

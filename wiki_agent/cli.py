@@ -26,12 +26,12 @@ def _print_run(question: str, model: str) -> None:
     result = answer_question(question, model=model)
 
     if result.searched:
-        print(f"[search used: {len(result.tool_calls)} call(s)]")
+        print(f"[retrieval: {len(result.tool_calls)} tool call(s)]")
         for i, tc in enumerate(result.tool_calls, 1):
             titles = ", ".join(tc.result_titles) or "(no results)"
-            print(f'  {i}. query="{tc.query}" -> {titles}')
+            print(f'  {i}. {tc.tool}("{tc.query}") -> {titles}')
     else:
-        print("[no search performed — answered directly]")
+        print("[no retrieval performed — answered directly]")
 
     print(f"\nA: {result.answer}\n")
 

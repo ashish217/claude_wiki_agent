@@ -224,14 +224,40 @@ fix the agent searches "2026 NBA Finals" rather than "recent", and the temporal
 category passes 5/5. `today` is a parameter (defaults to the real date), so it's
 overridable for reproducibility.
 
+**Iteration 5 — `read_article` (deeper retrieval), the eval-driven payoff.** The
+benchmark ladder isolated the dominant failure as *retrieval depth* (NQ-Open
+~100% vs SimpleQA ~10%, same category). Added a second tool, `read_article(title)`,
+returning the full article prose (vs. search's intro only), and a prompt step:
+"if the fact isn't in the intros, read the full article before abstaining." This
+is the deliberate single→two-tool iteration promised at the start — added only
+once the eval *proved* it was the bottleneck. Measured A/B on the 20 hard
+benchmark cases (same judge, same conditions):
+
+| Subset | Baseline (search only) | + read_article |
+|---|---|---|
+| SimpleQA (single-fact, in-body) | 20% | **60%** |
+| MuSiQue (multi-hop) | 30% | 30% |
+| **Hard-20 overall** | **25%** | **45%** |
+
+The win is concentrated exactly where predicted — SimpleQA's body-buried single
+facts (+40pp) — and flat on MuSiQue, whose difficulty is entity-chain *reasoning*,
+not retrieval depth (`read_article` helps only once you know which article to
+read). Cost: +~12% input tokens (reading full articles), with occasional
+search-spirals. **Full 82-case baseline (search-only): 68% (56/82)**; the failures
+are dominated by `abstained_wrongly`/`incorrect` on the deep-fact benchmarks —
+i.e. the agent stays calibrated (abstains, near-zero contradicted) and the ceiling
+is retrieval, which `read_article` is now the first lever against. (`extracts`
+still omits tables/infoboxes — a known next gap.)
+
 ## How I'd extend with more time
 
 - **Multi-trial averaging (top priority).** Run each case N times and report every
   metric as a mean ± range, so judge-side claim-decomposition noise (the dominant
   residual variance) is averaged out and small prompt changes become measurable.
-- Add `read_article(title, section)` for deep facts not in the intro, gated on
-  observed failures (would also fix faithfulness false-positives like the correct
-  "Darwin born in England" claim that the shallow intro couldn't support).
+- **Deepen `read_article` (now implemented).** It returns prose only — extend it to
+  parse tables/infoboxes (where many SimpleQA facts live) and to fetch a named
+  section, which should lift the remaining body/table-bound cases and the MuSiQue
+  chains once entity resolution lands.
 - Multi-judge panels or judge-vs-human spot-checks to quantify judge reliability.
 - Adversarial expansion of the false-premise and disambiguation sets.
 - Query-reformulation analysis (which query phrasings retrieve the gold article).
