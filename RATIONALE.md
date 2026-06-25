@@ -230,24 +230,59 @@ benchmark ladder isolated the dominant failure as *retrieval depth* (NQ-Open
 returning the full article prose (vs. search's intro only), and a prompt step:
 "if the fact isn't in the intros, read the full article before abstaining." This
 is the deliberate single→two-tool iteration promised at the start — added only
-once the eval *proved* it was the bottleneck. Measured A/B on the 20 hard
-benchmark cases (same judge, same conditions):
+once the eval *proved* it was the bottleneck.
 
-| Subset | Baseline (search only) | + read_article |
+**Full 82-case suite, before vs. after `read_article` (same judge, temperature=0):**
+
+| Group | search-only | + read_article |
 |---|---|---|
-| SimpleQA (single-fact, in-body) | 20% | **60%** |
-| MuSiQue (multi-hop) | 30% | 30% |
-| **Hard-20 overall** | **25%** | **45%** |
+| **OVERALL** | **68% (56/82)** | **77% (63/82)** |
+| _by benchmark_ | | |
+| NQ-Open (10) | 100% | 100% |
+| HotpotQA (20) | 80% | 85% |
+| MuSiQue (10) | 30% | 40% |
+| SimpleQA (10) | 20% | **60%** |
+| handwritten (32) | 78% | 81% |
+| _by category_ | | |
+| single_hop (24) | 58% | **75%** |
+| multi_hop (25) | 52% | 60% |
+| temporal (5) | 80% | 100% |
+| aggregation / unanswerable | 93% / 100% | 93% / 100% |
+| ambiguous / false_premise | 75% / 80% | 75% / 80% |
+| avg input tokens / question | 9.1k | 11.4k (+26%) |
 
-The win is concentrated exactly where predicted — SimpleQA's body-buried single
-facts (+40pp) — and flat on MuSiQue, whose difficulty is entity-chain *reasoning*,
-not retrieval depth (`read_article` helps only once you know which article to
-read). Cost: +~12% input tokens (reading full articles), with occasional
-search-spirals. **Full 82-case baseline (search-only): 68% (56/82)**; the failures
-are dominated by `abstained_wrongly`/`incorrect` on the deep-fact benchmarks —
-i.e. the agent stays calibrated (abstains, near-zero contradicted) and the ceiling
-is retrieval, which `read_article` is now the first lever against. (`extracts`
-still omits tables/infoboxes — a known next gap.)
+`read_article` fixed 8 cases and regressed 1 (net +7). The win lands exactly where
+the ladder predicted — **SimpleQA 20%→60%** (body-buried single facts) — and is
+flat on MuSiQue's *reasoning*-bound chains (`read_article` only helps once you know
+which article to read), at +26% input tokens. The agent stays calibrated
+throughout (abstains rather than fabricates; near-zero contradicted claims).
+
+### Failure analysis (19 remaining) — quick wins vs. structural
+
+Inspecting the after-run traces, failures fall into three tiers:
+
+- **Easy (prompt-only, ~4 cases).** `single-01`/`single-03` answer canonical facts
+  (Canberra, Fe→iron) *from memory* with no search ("doesn't require a search") →
+  `grounding_violation`; `ambig-04` (Michael Jordan) answers one meaning →
+  `not_disambiguated`; `fp-05` (Knicks) abstains as a "future event" *without
+  searching* to notice the drought already ended. All three are prompt fixes
+  (concrete always-search examples; disambiguate dominant names; "for 'when will X
+  happen', search to check whether it already has").
+- **Medium (completion / read-deeper nudge, ~4).** Partial answers that stop short
+  of the specific entity or final hop: `simpleqa-04` gives the *government* not the
+  appointing *President*; `musique-06` stops at the parents, not the grandmother;
+  `hotpot-b03`/`multi-05` give vague/partial detail. Fix: prompt to extract the
+  exact entity and complete every hop, reading the full article.
+- **Hard / structural (~8 — the real ceiling).** (a) **Table/infobox-bound facts**
+  — `simpleqa-07` (Kuiper Prize winners), `simpleqa-09` (Jerlov Award winners),
+  `hotpot-c08` (breed ancestry) live in tables that `extracts` strips, so even
+  `read_article` can't see them → needs table/infobox parsing. (b) **MuSiQue
+  multi-hop reasoning** — `musique-01/03/08/09` are entity-chain/resolution
+  failures, some now over-reading into contradicted answers → needs iterative
+  decomposition. (c) **Data quality** — `hotpot-b06` ("Sonic") is a noisy
+  benchmark gold. Also seen: **search-spirals** (`musique-09` 12 calls, `multi-05`
+  11) → a tool-call budget + "if read_article didn't surface it, stop and abstain"
+  guard would cut wasted cost.
 
 ## How I'd extend with more time
 
