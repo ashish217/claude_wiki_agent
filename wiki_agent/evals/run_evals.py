@@ -208,7 +208,11 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
     n = len(rows)
     avg_in = sum(r["tokens"]["input"] for r in rows) / n
     avg_out = sum(r["tokens"]["output"] for r in rows) / n
-    avg_searches = sum(r["n_searches"] for r in rows) / n
+    # Tool-call (search_wikipedia) efficiency: each search is one tool call.
+    total_searches = sum(r["n_searches"] for r in rows)
+    avg_searches = total_searches / n
+    busiest = max(rows, key=lambda r: r["n_searches"])
+    max_searches = busiest["n_searches"]
 
     # Grounding — denominator: cases that should have searched.
     g_rows = [r for r in rows if r["metrics"]["grounding_applicable"]]
@@ -216,13 +220,20 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
 
     print("\n" + "=" * 72 + "\nGROUNDING & EFFICIENCY (from trace)\n" + "-" * 72)
     print(f"  grounding-violation rate   : {_pct(g_viol, len(g_rows))}  ({g_viol}/{len(g_rows)} should-search cases)  [lower better]")
-    print(f"  avg searches / question    : {avg_searches:.2f}")
+    print(f"  tool calls / question      : avg {avg_searches:.2f}, max {max_searches} ({busiest['id']}), total {total_searches}")
     print(f"  avg tokens / question      : {avg_in:.0f} in / {avg_out:.0f} out")
 
     agg: Dict[str, Any] = {
         "n_cases": n,
         "grounding": {"violation_rate": _ratio(g_viol, len(g_rows)), "violations": g_viol, "n_should_search": len(g_rows)},
-        "efficiency": {"avg_searches": round(avg_searches, 2), "avg_input_tokens": round(avg_in), "avg_output_tokens": round(avg_out)},
+        "efficiency": {
+            "avg_searches": round(avg_searches, 2),
+            "max_searches": max_searches,
+            "max_searches_case": busiest["id"],
+            "total_searches": total_searches,
+            "avg_input_tokens": round(avg_in),
+            "avg_output_tokens": round(avg_out),
+        },
         "judge": None,
     }
 
@@ -320,6 +331,7 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
         c_faith_rows = [r for r in crows if r["metrics"]["faith_applicable"]]
         c_sup = sum(r["metrics"]["claims_supported"] for r in c_faith_rows)
         c_tot = sum(r["metrics"]["claims_total"] for r in c_faith_rows)
+        c_avg_searches = sum(r["n_searches"] for r in crows) / len(crows)
         creasons: Dict[str, int] = defaultdict(int)
         for r in crows:
             if r["metrics"]["passed"] is False:
@@ -329,10 +341,11 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
             "pass_rate": _ratio(cpass, len(crows)),
             "n": len(crows),
             "faithfulness_micro": _ratio(c_sup, c_tot),
+            "avg_searches": round(c_avg_searches, 2),
             "fail_reasons": dict(creasons),
         }
         reason_str = ("   ← " + ", ".join(f"{k}×{v}" for k, v in sorted(creasons.items(), key=lambda kv: -kv[1]))) if creasons else ""
-        print(f"  {cat:<16} pass {_pct(cpass, len(crows)):>4}  ({cpass}/{len(crows)})   faith {_pct(c_sup, c_tot):>4}{reason_str}")
+        print(f"  {cat:<16} pass {_pct(cpass, len(crows)):>4}  ({cpass}/{len(crows)})   faith {_pct(c_sup, c_tot):>4}   srch {c_avg_searches:.1f}{reason_str}")
 
     agg["judge"] = {
         "n_judged": len(judged),
