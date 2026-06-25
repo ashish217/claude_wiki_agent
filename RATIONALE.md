@@ -107,17 +107,20 @@ structured output) handles the open-ended dimensions and is always shown the
 *queries* and the *retrieved context*, so faithfulness and query-quality are
 graded against what the agent actually did and saw.
 
-**Test taxonomy (~52 cases across 7 categories), because category dictates the
+**Test taxonomy (~62 cases across 7 categories), because category dictates the
 correct behaviour:** single-hop · multi-hop · aggregation (compare/aggregate over
 several entities) · temporal ("current X" — must not trust stale priors) ·
 ambiguous (must disambiguate) · unanswerable (must abstain) · false-premise (must
 correct). The negative categories (unanswerable, false-premise) and the
 behavioural ones (ambiguous) are where most systems quietly fail and where the
-eval earns its keep. To raise difficulty and stress multi-hop robustness, the set
-includes **20 hard samples drawn from HotpotQA** (a Wikipedia-grounded multi-hop
-benchmark): 10 `bridge` questions → `multi_hop` and 10 `comparison` questions →
-`aggregation`. These obscure-entity, deep multi-hop questions are the hardest in
-the suite and the main source of headroom for hardening the agent.
+eval earns its keep. To raise difficulty the set folds in two public benchmarks:
+**20 hard HotpotQA samples** (Wikipedia-grounded multi-hop — 10 `bridge`→`multi_hop`,
+10 `comparison`→`aggregation`) and **10 SimpleQA samples** (adversarial single-fact
+factuality → `single_hop`). These supply most of the headroom for hardening the
+agent — and SimpleQA is especially diagnostic: it scores **~10%**, not because the
+agent hallucinates (it stays calibrated, abstaining rather than fabricating) but
+because the obscure facts live in article *bodies* the intro-only retrieval can't
+reach — the strongest evidence for the `read_article` extension below.
 
 ## Where it succeeds / where it fails
 
