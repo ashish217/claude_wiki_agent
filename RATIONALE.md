@@ -89,6 +89,16 @@ failure to the specific gate(s) it tripped (`grounding_violation`,
 and per category — so a pass-rate drop is immediately diagnosable rather than
 opaque.
 
+**Correctness vs. groundedness are measured independently**, and the report
+cross-tabulates them (a 2×2 over substantive answers) to separate "right answer"
+from "right answer *because of* retrieval". This surfaces the
+**correct-but-ungrounded** quadrant — answers that are correct but lean on the
+model's memory rather than the retrieved text. On the current suite that quadrant
+holds all the residual imperfection: 0 incorrect and 0 contradicted, with ~5/24
+answers correct-but-not-fully-grounded (a true peripheral aside not in the intro
+extract) — isolating the weakness as groundedness of incidental detail (an
+argument for deeper `read_article` retrieval), not correctness.
+
 **Grading is two-layered.** Programmatic checks read the trace (deterministic,
 cheap): did it search, how many times, tokens. The Opus 4.8 judge (Pydantic
 structured output) handles the open-ended dimensions and is always shown the

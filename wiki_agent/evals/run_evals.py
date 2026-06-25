@@ -78,6 +78,8 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
     faith_applicable = False
     passed = None
     fail_reasons = None
+    is_substantive = False
+    fully_grounded = False
 
     if judgment is not None:
         if searched:
@@ -91,6 +93,13 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
         faith_applicable = searched and not judgment.get("abstained") and total_claims > 0
         if faith_applicable:
             faithfulness = supported / total_claims
+
+        # For the correctness×groundedness view: a "substantive" answer makes factual
+        # claims (not a pure abstention); it is "fully grounded" only if it searched
+        # and every claim is supported by the retrieved text. A correct answer that is
+        # NOT fully grounded leaned on the model's memory rather than retrieval.
+        is_substantive = (not judgment.get("abstained")) and total_claims > 0
+        fully_grounded = is_substantive and searched and supported == total_claims
 
         fail_reasons = _failure_reasons(case, judgment, grounding_violation, faithfulness, contradicted)
         passed = len(fail_reasons) == 0
@@ -110,6 +119,8 @@ def score_case(case: Dict[str, Any], result, judgment: Optional[Dict[str, Any]])
         "claims_total": total_claims,
         "faith_applicable": faith_applicable,
         "faithfulness": faithfulness,
+        "is_substantive": is_substantive,
+        "fully_grounded": fully_grounded,
         "passed": passed,
     }
 
@@ -243,6 +254,15 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
     faith_micro = _ratio(sup, tot)
     faith_macro = _mean([r["metrics"]["faithfulness"] for r in faith_rows])
 
+    # correctness × groundedness — over substantive answers (those making factual
+    # claims). Separates "right answer" from "right answer backed by retrieval", so
+    # the correct-but-ungrounded quadrant (memory-leaning) is visible for debugging.
+    sub = [r for r in judged if r["metrics"]["is_substantive"]]
+    cg = [r for r in sub if r["judgment"]["correctness"] == "correct" and r["metrics"]["fully_grounded"]]
+    cu = [r for r in sub if r["judgment"]["correctness"] == "correct" and not r["metrics"]["fully_grounded"]]
+    ig = [r for r in sub if r["judgment"]["correctness"] != "correct" and r["metrics"]["fully_grounded"]]
+    iu = [r for r in sub if r["judgment"]["correctness"] != "correct" and not r["metrics"]["fully_grounded"]]
+
     # supporting behaviour metrics
     corr_weighted = _mean([_CORRECT.get(r["judgment"]["correctness"], 0) for r in judged])
     abstain_ok = sum(1 for r in judged if bool(r["judgment"]["abstained"]) == r["metrics"]["should_abstain"])
@@ -270,6 +290,17 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
     print(f"  faithfulness (micro)       : {_pct(sup, tot)}  ({sup} supported / {tot} claims)")
     print(f"  faithfulness (macro)       : {_pct((faith_macro or 0), 1)}  (n={len(faith_rows)} answers)")
     print(f"  claim labels               : {sup} supported / {unsup} unsupported / {contra} contradicted")
+
+    print("\n" + "=" * 72 + f"\nCORRECTNESS × GROUNDEDNESS ({len(sub)} substantive answers)\n" + "-" * 72)
+    print(f"  {'':<14}{'fully-grounded':>16}{'not-grounded':>16}")
+    print(f"  {'correct':<14}{len(cg):>16}{len(cu):>16}")
+    print(f"  {'not correct':<14}{len(ig):>16}{len(iu):>16}")
+    if cu:
+        print("  ↳ correct but NOT grounded (right answer, leaned on memory/unsupported):")
+        for r in cu:
+            fa = r["metrics"]["faithfulness"]
+            fstr = f"faith={fa:.2f}" if fa is not None else "no-search"
+            print(f"      {r['id']:<12} [{r['category']:<13}] {fstr}")
 
     print("\n" + "=" * 72 + "\nCORRECTNESS & BEHAVIOUR\n" + "-" * 72)
     print(f"  correctness (weighted)     : {_pct((corr_weighted or 0), 1)}")
@@ -322,6 +353,22 @@ def _report(rows: List[Dict[str, Any]], args) -> Dict[str, Any]:
             "claims": {"supported": sup, "unsupported": unsup, "contradicted": contra, "total": tot},
         },
         "correctness_weighted": round(corr_weighted, 3) if corr_weighted is not None else None,
+        "correctness_x_groundedness": {
+            "n_substantive": len(sub),
+            "correct_grounded": len(cg),
+            "correct_ungrounded": len(cu),
+            "incorrect_grounded": len(ig),
+            "incorrect_ungrounded": len(iu),
+            "correct_ungrounded_cases": [
+                {
+                    "id": r["id"],
+                    "category": r["category"],
+                    "searched": r["metrics"]["searched"],
+                    "faithfulness": r["metrics"]["faithfulness"],
+                }
+                for r in cu
+            ],
+        },
         "abstention_accuracy": {"pass": abstain_ok, "n": len(judged)},
         "disambiguation": {"pass": ambig_ok, "n": len(ambig)},
         "false_premise_handled": {"pass": fp_ok, "n": len(fp)},
