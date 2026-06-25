@@ -107,13 +107,17 @@ structured output) handles the open-ended dimensions and is always shown the
 *queries* and the *retrieved context*, so faithfulness and query-quality are
 graded against what the agent actually did and saw.
 
-**Test taxonomy (~28 cases across 7 categories), because category dictates the
+**Test taxonomy (~52 cases across 7 categories), because category dictates the
 correct behaviour:** single-hop · multi-hop · aggregation (compare/aggregate over
 several entities) · temporal ("current X" — must not trust stale priors) ·
 ambiguous (must disambiguate) · unanswerable (must abstain) · false-premise (must
 correct). The negative categories (unanswerable, false-premise) and the
 behavioural ones (ambiguous) are where most systems quietly fail and where the
-eval earns its keep.
+eval earns its keep. To raise difficulty and stress multi-hop robustness, the set
+includes **20 hard samples drawn from HotpotQA** (a Wikipedia-grounded multi-hop
+benchmark): 10 `bridge` questions → `multi_hop` and 10 `comparison` questions →
+`aggregation`. These obscure-entity, deep multi-hop questions are the hardest in
+the suite and the main source of headroom for hardening the agent.
 
 ## Where it succeeds / where it fails
 
