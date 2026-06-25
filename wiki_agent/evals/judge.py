@@ -17,6 +17,7 @@ model than the agent reduces self-grading bias).
 
 from __future__ import annotations
 
+import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 import anthropic
@@ -98,11 +99,13 @@ class Judgment(BaseModel):
 
 _SYSTEM = (
     "You are a strict evaluator of a Wikipedia-grounded question-answering system. You are "
-    "given a question, the gold key facts, the expected behaviour, the search queries the "
-    "system issued, the Wikipedia text it retrieved, and its answer. Grade only what is in "
-    "front of you, applying the definitions in the output schema. For the claim list, "
-    "decompose the answer into atomic factual claims and label each strictly against the "
-    "retrieved text."
+    "given today's date, a question, the gold key facts, the expected behaviour, the search "
+    "queries the system issued, the Wikipedia text it retrieved, and its answer. Grade only "
+    "what is in front of you, applying the definitions in the output schema. For the claim "
+    "list, decompose the answer into atomic factual claims and label each strictly against the "
+    "retrieved text. For questions about 'current'/'recent'/'latest', judge correctness as of "
+    "TODAY'S DATE and against the retrieved text: the answer should reflect the most recent "
+    "applicable item present in the retrieved text, not an outdated one."
 )
 
 
@@ -110,12 +113,19 @@ def judge_answer(
     case: Dict[str, Any],
     result: AgentResult,
     client: Optional[anthropic.Anthropic] = None,
+    today: Optional[str] = None,
 ) -> Optional[Judgment]:
-    """Grade one answer, returning a validated ``Judgment`` (or ``None`` on failure)."""
+    """Grade one answer, returning a validated ``Judgment`` (or ``None`` on failure).
+
+    ``today`` (ISO date) lets the judge resolve 'recent'/'current'/'latest'
+    correctly; defaults to the real current date.
+    """
     client = client or anthropic.Anthropic()
+    today = today or datetime.date.today().isoformat()
 
     queries = [tc.query for tc in result.tool_calls]
     user = (
+        f"TODAY'S DATE: {today}\n\n"
         f"QUESTION:\n{case['question']}\n\n"
         f"GOLD KEY FACTS:\n{', '.join(case.get('key_facts', [])) or '(none)'}\n\n"
         f"EXPECTED BEHAVIOUR: category={case.get('category')}, "

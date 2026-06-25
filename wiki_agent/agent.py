@@ -8,13 +8,14 @@ used, and grading *faithfulness* (was the answer supported by retrieved text?).
 
 from __future__ import annotations
 
+import datetime
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import anthropic
 
-from .prompts import SYSTEM_PROMPT, TOOL_DEF
+from .prompts import TOOL_DEF, build_system_prompt
 from .wikipedia import format_results, search_wikipedia
 
 # Claude Haiku 4.5 — the agent model. Deliberately a small model: it makes the
@@ -86,16 +87,22 @@ def answer_question(
     question: str,
     model: str = DEFAULT_MODEL,
     client: Optional[anthropic.Anthropic] = None,
+    today: Optional[str] = None,
 ) -> AgentResult:
-    """Answer ``question`` with Wikipedia grounding, returning an ``AgentResult``."""
+    """Answer ``question`` with Wikipedia grounding, returning an ``AgentResult``.
+
+    ``today`` (ISO date) is injected so the agent can resolve relative time; it
+    defaults to the real current date and is overridable for tests/reproducibility.
+    """
     if client is None:
         if not os.getenv("ANTHROPIC_API_KEY"):
             raise RuntimeError("ANTHROPIC_API_KEY is not set. Export it before running.")
         client = anthropic.Anthropic()
 
+    today = today or datetime.date.today().isoformat()
     # system / messages / tool_results stay plain dicts: they are the Anthropic
     # SDK's wire format, not our own data model.
-    system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    system = [{"type": "text", "text": build_system_prompt(today), "cache_control": {"type": "ephemeral"}}]
     messages: List[Dict[str, Any]] = [{"role": "user", "content": question}]
     tool_calls: List[ToolCall] = []
     usage = Usage()

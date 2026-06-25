@@ -195,6 +195,17 @@ LLM-judge eval; with a granular claim-level metric the *judge* becomes the
 dominant noise source. The real fix is **multi-trial averaging** (report each
 metric as a mean ± range over N runs), which is the top eval extension below.
 
+**Iteration 4 — temporal grounding (inject today's date).** A spot-check ("Who won
+the recent NBA championship?") returned the *2024* Finals: with no notion of "now",
+the model anchors "recent/latest" to its training cutoff. Captured the failure
+first as eval cases (`temporal-04` NBA, `temporal-05` FIFA World Cup), then fixed
+it by prepending today's date to the system prompt with an instruction to resolve
+relative time and search the specific year (and the *judge* is given the date too,
+so these cases can be graded as-of-today against the retrieved text). After the
+fix the agent searches "2026 NBA Finals" rather than "recent", and the temporal
+category passes 5/5. `today` is a parameter (defaults to the real date), so it's
+overridable for reproducibility.
+
 ## How I'd extend with more time
 
 - **Multi-trial averaging (top priority).** Run each case N times and report every

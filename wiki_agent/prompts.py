@@ -58,6 +58,26 @@ then your citation.
 You cannot answer questions about private, personal, real-time, or future \
 information that Wikipedia would not contain — say so plainly."""
 
+# Prepended at runtime so the agent can resolve relative time. Without a notion of
+# "now", terms like "recent"/"latest" anchor to the model's training cutoff (e.g. it
+# answered "2024 NBA Finals" for "recent NBA championship"); with today's date it can
+# query the right year and trust Wikipedia's current content over stale priors.
+DATE_NOTE = (
+    "Today's date is {today}. Treat it as the current date. When a question uses "
+    "relative time — \"current\", \"latest\", \"most recent\", \"now\", \"this year\" "
+    "— resolve it against today's date and search for the specific year/period (e.g. "
+    "search \"2026 NBA Finals\", not \"recent NBA Finals\"). Wikipedia is kept "
+    "up to date, so rely on what it returns for recent events rather than your own "
+    "sense of what is current. If the latest event may not have concluded yet, report "
+    "the most recent *completed* one and note anything still in progress."
+)
+
+
+def build_system_prompt(today: str) -> str:
+    """System prompt with today's date prepended (for relative-time resolution)."""
+    return DATE_NOTE.format(today=today) + "\n\n" + SYSTEM_PROMPT
+
+
 TOOL_DEF = {
     "name": "search_wikipedia",
     "description": (
