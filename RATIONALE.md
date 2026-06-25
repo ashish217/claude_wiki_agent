@@ -29,7 +29,9 @@ maps to a measurable behaviour:
    sentence; break multi-hop questions into sequential searches.
 3. **Ground the answer** — answer only from retrieved text; this is the core
    anti-hallucination lever.
-4. **Cite** — name the article(s), for verifiability.
+4. **Cite** — name the article(s) used, in one fixed format
+   (`**Sources:** [Title](URL), …`, using the titles/URLs the tool returned), so
+   citations are consistent and clickable/verifiable rather than free-form.
 5. **Calibrated honesty** — abstain when Wikipedia lacks the answer; correct
    false premises; disambiguate ambiguous entities.
 6. **Concision** — answer first, then support, then citation.
