@@ -107,27 +107,31 @@ structured output) handles the open-ended dimensions and is always shown the
 *queries* and the *retrieved context*, so faithfulness and query-quality are
 graded against what the agent actually did and saw.
 
-**Test taxonomy (~72 cases across 7 categories), because category dictates the
+**Test taxonomy (~82 cases across 7 categories), because category dictates the
 correct behaviour:** single-hop · multi-hop · aggregation (compare/aggregate over
 several entities) · temporal ("current X" — must not trust stale priors) ·
 ambiguous (must disambiguate) · unanswerable (must abstain) · false-premise (must
 correct). The negative categories (unanswerable, false-premise) and the
 behavioural ones (ambiguous) are where most systems quietly fail and where the
-eval earns its keep. To raise difficulty the set folds in **three public
+eval earns its keep. To stress robustness the set folds in **four public
 benchmarks**, which form a clean difficulty ladder:
 
 | Benchmark | Maps to | Subset pass | What it stresses |
 |---|---|---|---|
+| NQ-Open (10) | single_hop | ~100% | popular single facts (in the article lead) |
 | HotpotQA (20, hard) | multi_hop / aggregation | ~85% | 2-hop bridge & comparison |
 | MuSiQue (10, val) | multi_hop | ~40% | genuine 2–4-hop chains |
-| SimpleQA (10) | single_hop | ~10% | obscure single facts |
+| SimpleQA (10) | single_hop | ~10% | obscure single facts (in article bodies) |
 
-SimpleQA is the most diagnostic: ~10% **not** because the agent hallucinates (it
-stays calibrated — abstains rather than fabricates) but because the facts live in
-article *bodies* the intro-only retrieval can't reach. MuSiQue's failures are the
-same shape plus indirect-entity resolution. Together they are the strongest
-evidence for the `read_article` (deeper retrieval) extension below, and the main
-source of headroom for hardening the agent.
+The ladder isolates the dominant failure mode: **NQ-Open and SimpleQA are both
+`single_hop`, yet score ~100% vs ~10%** — same reasoning, opposite outcome,
+because NQ's facts sit in the article *lead* (retrievable) while SimpleQA's sit in
+the *body* (not). The agent doesn't hallucinate on the hard ones — it stays
+calibrated and abstains. So the variable is **retrieval depth**, and SimpleQA +
+MuSiQue (deep multi-hop + indirect-entity resolution) are the strongest evidence
+for the `read_article` (deeper retrieval) extension below — the main source of
+headroom for hardening the agent. (NQ-Open's time-relative questions, whose gold
+answers drift, were filtered out so the suite stays date-stable.)
 
 ## Where it succeeds / where it fails
 
