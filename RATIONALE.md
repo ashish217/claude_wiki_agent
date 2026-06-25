@@ -107,20 +107,27 @@ structured output) handles the open-ended dimensions and is always shown the
 *queries* and the *retrieved context*, so faithfulness and query-quality are
 graded against what the agent actually did and saw.
 
-**Test taxonomy (~62 cases across 7 categories), because category dictates the
+**Test taxonomy (~72 cases across 7 categories), because category dictates the
 correct behaviour:** single-hop · multi-hop · aggregation (compare/aggregate over
 several entities) · temporal ("current X" — must not trust stale priors) ·
 ambiguous (must disambiguate) · unanswerable (must abstain) · false-premise (must
 correct). The negative categories (unanswerable, false-premise) and the
 behavioural ones (ambiguous) are where most systems quietly fail and where the
-eval earns its keep. To raise difficulty the set folds in two public benchmarks:
-**20 hard HotpotQA samples** (Wikipedia-grounded multi-hop — 10 `bridge`→`multi_hop`,
-10 `comparison`→`aggregation`) and **10 SimpleQA samples** (adversarial single-fact
-factuality → `single_hop`). These supply most of the headroom for hardening the
-agent — and SimpleQA is especially diagnostic: it scores **~10%**, not because the
-agent hallucinates (it stays calibrated, abstaining rather than fabricating) but
-because the obscure facts live in article *bodies* the intro-only retrieval can't
-reach — the strongest evidence for the `read_article` extension below.
+eval earns its keep. To raise difficulty the set folds in **three public
+benchmarks**, which form a clean difficulty ladder:
+
+| Benchmark | Maps to | Subset pass | What it stresses |
+|---|---|---|---|
+| HotpotQA (20, hard) | multi_hop / aggregation | ~85% | 2-hop bridge & comparison |
+| MuSiQue (10, val) | multi_hop | ~40% | genuine 2–4-hop chains |
+| SimpleQA (10) | single_hop | ~10% | obscure single facts |
+
+SimpleQA is the most diagnostic: ~10% **not** because the agent hallucinates (it
+stays calibrated — abstains rather than fabricates) but because the facts live in
+article *bodies* the intro-only retrieval can't reach. MuSiQue's failures are the
+same shape plus indirect-entity resolution. Together they are the strongest
+evidence for the `read_article` (deeper retrieval) extension below, and the main
+source of headroom for hardening the agent.
 
 ## Where it succeeds / where it fails
 
