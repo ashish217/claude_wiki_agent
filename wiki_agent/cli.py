@@ -13,9 +13,9 @@ import sys
 from .agent import DEFAULT_MODEL, answer_question
 
 DEMO_QUESTIONS = [
-    "What is the capital of Australia?",  # simple factual
+    "What was John Glen's first spacecraft called?",  # simple factual
     "What is the capital of the country that hosted the 2016 Summer Olympics?",  # multi-hop
-    "Who is the current Secretary-General of the United Nations?",  # temporal
+    "Who won the most recent NBA championship?",  # temporal
     "When did Albert Einstein win the Nobel Prize for his theory of relativity?",  # false premise
     "What did I have for breakfast this morning?",  # unanswerable -> abstain
 ]
