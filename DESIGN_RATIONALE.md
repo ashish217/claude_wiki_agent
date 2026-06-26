@@ -170,21 +170,30 @@ fabricates. Abstention on unanswerable questions is 100%, false-premise correcti
 and disambiguation mostly work, temporal grounding hits 100% after the date fix,
 and aggregation/comparison is strong (93%).
 
-**Where it fails (19 remaining, by tier):**
+**Where it fails (the 19 remaining, by tier).** From the
+`with_read_page` report, the failure-attribution tally is `incorrect ×10`,
+`abstained_wrongly ×6`, `partial_answer ×5`, `grounding_violation ×3`,
+`contradicted_claim ×2`, `low_faithfulness ×2`, `not_disambiguated ×1`,
+`premise_not_handled ×1` (a case can trip several). Grouped by what would fix them:
 
-- **Quick prompt-fixable (~4).** Grounding violations on *canonical* facts
-  (Canberra, Fe→iron answered from memory); a dominant-name disambiguation miss
-  (Michael Jordan); a false-premise-framed-as-future question (the Knicks "title
-  drought") where the agent abstained as "a future event" *without searching* to
+- **Quick prompt-fixable (4):** `single-01`, `single-03` answer *canonical* facts
+  (Canberra, Fe→iron) from memory with no search → `grounding_violation`;
+  `ambig-04` (Michael Jordan) answers one meaning → `not_disambiguated`; `fp-05`
+  (Knicks "title drought") abstains as "a future event" *without searching* to
   notice it already happened.
-- **Medium (~4).** Partial answers that stop short of the *specific* entity or the
-  *final* hop (gave the appointing *government* not the *President*; stopped at the
-  parents not the grandmother).
-- **Structural — the real ceiling (~8).** (a) **Table/infobox-bound facts**
-  (award-winner lists, breed ancestry) live in tables that the prose `extracts`
-  strips, so even `read_article` can't see them; (b) **MuSiQue multi-hop
-  reasoning** — entity-chain resolution the agent can't decompose, occasionally
-  over-reading into a contradicted answer; (c) one **noisy benchmark gold**.
+- **Medium — completion / read-deeper nudge (6):** five `partial_answer` cases
+  that stop short of the specific entity or final hop (`simpleqa-04` gives the
+  *government* not the appointing *President*; `musique-06` stops at the parents
+  not the grandmother; plus `hotpot-b03`, `multi-05`, `musique-02`), and `multi-04`
+  (`low_faithfulness` — correct, but one peripheral claim from memory).
+- **Structural — the real ceiling (9):** (a) **Table/infobox-bound facts** —
+  `simpleqa-07` (Kuiper Prize winners), `simpleqa-09` (Jerlov Award winners),
+  `hotpot-c08` (breed ancestry), `simpleqa-03` (Leipzig-1877 honoree) live in
+  tables/lists the prose `extracts` strips, so even `read_article` can't see them →
+  needs table/infobox parsing; (b) **MuSiQue multi-hop reasoning** — `musique-01`,
+  `musique-03`, `musique-08`, `musique-09` are entity-chain resolutions the agent
+  can't decompose, twice over-reading into a `contradicted_claim`; (c) one **noisy
+  benchmark gold** (`hotpot-b06`, "Sonic").
 
 **The single most useful learning, made visible by the cross-tab:** failures are
 **groundedness / calibration / retrieval-depth** problems — *never*
