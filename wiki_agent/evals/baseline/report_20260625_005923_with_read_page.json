@@ -1,0 +1,343 @@
+{
+  "timestamp": "20260625_005923",
+  "model": "claude-haiku-4-5",
+  "n_cases": 82,
+  "judge": true,
+  "report": {
+    "n_cases": 82,
+    "grounding": {
+      "violation_rate": 0.038,
+      "violations": 3,
+      "n_should_search": 79
+    },
+    "efficiency": {
+      "avg_searches": 2.35,
+      "max_searches": 12,
+      "max_searches_case": "musique-09",
+      "total_searches": 193,
+      "avg_input_tokens": 11421,
+      "avg_output_tokens": 334
+    },
+    "judge": {
+      "n_judged": 82,
+      "pass_rate": 0.768,
+      "failures": {
+        "by_reason": {
+          "grounding_violation": 3,
+          "low_faithfulness": 2,
+          "partial_answer": 5,
+          "not_disambiguated": 1,
+          "abstained_wrongly": 6,
+          "premise_not_handled": 1,
+          "incorrect": 10,
+          "contradicted_claim": 2
+        },
+        "cases": [
+          {
+            "id": "single-01",
+            "category": "single_hop",
+            "reasons": [
+              "grounding_violation"
+            ]
+          },
+          {
+            "id": "single-03",
+            "category": "single_hop",
+            "reasons": [
+              "grounding_violation"
+            ]
+          },
+          {
+            "id": "multi-04",
+            "category": "multi_hop",
+            "reasons": [
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "multi-05",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "ambig-04",
+            "category": "ambiguous",
+            "reasons": [
+              "not_disambiguated"
+            ]
+          },
+          {
+            "id": "fp-05",
+            "category": "false_premise",
+            "reasons": [
+              "grounding_violation",
+              "abstained_wrongly",
+              "premise_not_handled",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "hotpot-b03",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "hotpot-b06",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "hotpot-c08",
+            "category": "aggregation",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-03",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-04",
+            "category": "single_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "simpleqa-07",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-09",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-01",
+            "category": "multi_hop",
+            "reasons": [
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-02",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "musique-03",
+            "category": "multi_hop",
+            "reasons": [
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-06",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "musique-08",
+            "category": "multi_hop",
+            "reasons": [
+              "incorrect",
+              "contradicted_claim",
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "musique-09",
+            "category": "multi_hop",
+            "reasons": [
+              "incorrect",
+              "contradicted_claim"
+            ]
+          }
+        ]
+      },
+      "query_quality_mean": 0.967,
+      "query_quality_n": 76,
+      "faithfulness": {
+        "micro": 0.969,
+        "macro": 0.974,
+        "n_answers": 70,
+        "claims": {
+          "supported": 286,
+          "unsupported": 7,
+          "contradicted": 2,
+          "total": 295
+        }
+      },
+      "correctness_weighted": 0.848,
+      "correctness_x_groundedness": {
+        "n_substantive": 72,
+        "correct_grounded": 55,
+        "correct_ungrounded": 8,
+        "incorrect_grounded": 7,
+        "incorrect_ungrounded": 2,
+        "correct_ungrounded_cases": [
+          {
+            "id": "single-01",
+            "category": "single_hop",
+            "searched": false,
+            "faithfulness": null
+          },
+          {
+            "id": "single-03",
+            "category": "single_hop",
+            "searched": false,
+            "faithfulness": null
+          },
+          {
+            "id": "single-04",
+            "category": "single_hop",
+            "searched": true,
+            "faithfulness": 0.75
+          },
+          {
+            "id": "multi-04",
+            "category": "multi_hop",
+            "searched": true,
+            "faithfulness": 0.6666666666666666
+          },
+          {
+            "id": "ambig-01",
+            "category": "ambiguous",
+            "searched": true,
+            "faithfulness": 0.9
+          },
+          {
+            "id": "ambig-03",
+            "category": "ambiguous",
+            "searched": true,
+            "faithfulness": 0.9230769230769231
+          },
+          {
+            "id": "fp-03",
+            "category": "false_premise",
+            "searched": true,
+            "faithfulness": 0.75
+          },
+          {
+            "id": "fp-04",
+            "category": "false_premise",
+            "searched": true,
+            "faithfulness": 0.75
+          }
+        ]
+      },
+      "abstention_accuracy": {
+        "pass": 76,
+        "n": 82
+      },
+      "disambiguation": {
+        "pass": 3,
+        "n": 4
+      },
+      "false_premise_handled": {
+        "pass": 4,
+        "n": 5
+      },
+      "citation_present": {
+        "pass": 70,
+        "n": 72
+      },
+      "by_category": {
+        "aggregation": {
+          "pass_rate": 0.933,
+          "n": 15,
+          "faithfulness_micro": 1.0,
+          "avg_searches": 2.67,
+          "fail_reasons": {
+            "abstained_wrongly": 1,
+            "incorrect": 1
+          }
+        },
+        "ambiguous": {
+          "pass_rate": 0.75,
+          "n": 4,
+          "faithfulness_micro": 0.951,
+          "avg_searches": 1.0,
+          "fail_reasons": {
+            "not_disambiguated": 1
+          }
+        },
+        "false_premise": {
+          "pass_rate": 0.8,
+          "n": 5,
+          "faithfulness_micro": 0.889,
+          "avg_searches": 0.8,
+          "fail_reasons": {
+            "grounding_violation": 1,
+            "abstained_wrongly": 1,
+            "premise_not_handled": 1,
+            "incorrect": 1
+          }
+        },
+        "multi_hop": {
+          "pass_rate": 0.6,
+          "n": 25,
+          "faithfulness_micro": 0.958,
+          "avg_searches": 3.76,
+          "fail_reasons": {
+            "low_faithfulness": 2,
+            "partial_answer": 4,
+            "abstained_wrongly": 1,
+            "incorrect": 5,
+            "contradicted_claim": 2
+          }
+        },
+        "single_hop": {
+          "pass_rate": 0.75,
+          "n": 24,
+          "faithfulness_micro": 0.985,
+          "avg_searches": 1.83,
+          "fail_reasons": {
+            "grounding_violation": 2,
+            "abstained_wrongly": 3,
+            "incorrect": 3,
+            "partial_answer": 1
+          }
+        },
+        "temporal": {
+          "pass_rate": 1.0,
+          "n": 5,
+          "faithfulness_micro": 1.0,
+          "avg_searches": 1.0,
+          "fail_reasons": {}
+        },
+        "unanswerable": {
+          "pass_rate": 1.0,
+          "n": 4,
+          "faithfulness_micro": null,
+          "avg_searches": 0.5,
+          "fail_reasons": {}
+        }
+      }
+    }
+  }
+}

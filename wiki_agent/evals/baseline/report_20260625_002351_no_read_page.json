@@ -1,0 +1,428 @@
+{
+  "timestamp": "20260625_002351",
+  "model": "claude-haiku-4-5",
+  "n_cases": 82,
+  "judge": true,
+  "report": {
+    "n_cases": 82,
+    "grounding": {
+      "violation_rate": 0.038,
+      "violations": 3,
+      "n_should_search": 79
+    },
+    "efficiency": {
+      "avg_searches": 2.27,
+      "max_searches": 8,
+      "max_searches_case": "hotpot-c08",
+      "total_searches": 186,
+      "avg_input_tokens": 9074,
+      "avg_output_tokens": 327
+    },
+    "judge": {
+      "n_judged": 82,
+      "pass_rate": 0.683,
+      "failures": {
+        "by_reason": {
+          "grounding_violation": 3,
+          "low_faithfulness": 4,
+          "partial_answer": 5,
+          "not_disambiguated": 1,
+          "abstained_wrongly": 14,
+          "premise_not_handled": 1,
+          "incorrect": 14
+        },
+        "cases": [
+          {
+            "id": "single-01",
+            "category": "single_hop",
+            "reasons": [
+              "grounding_violation"
+            ]
+          },
+          {
+            "id": "single-03",
+            "category": "single_hop",
+            "reasons": [
+              "grounding_violation"
+            ]
+          },
+          {
+            "id": "multi-04",
+            "category": "multi_hop",
+            "reasons": [
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "multi-05",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "temporal-05",
+            "category": "temporal",
+            "reasons": [
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "ambig-04",
+            "category": "ambiguous",
+            "reasons": [
+              "not_disambiguated"
+            ]
+          },
+          {
+            "id": "fp-05",
+            "category": "false_premise",
+            "reasons": [
+              "grounding_violation",
+              "abstained_wrongly",
+              "premise_not_handled",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "hotpot-b03",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "hotpot-b06",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "hotpot-b10",
+            "category": "multi_hop",
+            "reasons": [
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "hotpot-c08",
+            "category": "aggregation",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-01",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-03",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-04",
+            "category": "single_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "simpleqa-06",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-07",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-08",
+            "category": "single_hop",
+            "reasons": [
+              "low_faithfulness"
+            ]
+          },
+          {
+            "id": "simpleqa-09",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "simpleqa-10",
+            "category": "single_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-01",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-03",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-05",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "musique-06",
+            "category": "multi_hop",
+            "reasons": [
+              "partial_answer"
+            ]
+          },
+          {
+            "id": "musique-08",
+            "category": "multi_hop",
+            "reasons": [
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-09",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          },
+          {
+            "id": "musique-10",
+            "category": "multi_hop",
+            "reasons": [
+              "abstained_wrongly",
+              "incorrect"
+            ]
+          }
+        ]
+      },
+      "query_quality_mean": 0.934,
+      "query_quality_n": 76,
+      "faithfulness": {
+        "micro": 0.96,
+        "macro": 0.947,
+        "n_answers": 62,
+        "claims": {
+          "supported": 267,
+          "unsupported": 11,
+          "contradicted": 0,
+          "total": 278
+        }
+      },
+      "correctness_weighted": 0.799,
+      "correctness_x_groundedness": {
+        "n_substantive": 64,
+        "correct_grounded": 46,
+        "correct_ungrounded": 13,
+        "incorrect_grounded": 5,
+        "incorrect_ungrounded": 0,
+        "correct_ungrounded_cases": [
+          {
+            "id": "single-01",
+            "category": "single_hop",
+            "searched": false,
+            "faithfulness": null
+          },
+          {
+            "id": "single-03",
+            "category": "single_hop",
+            "searched": false,
+            "faithfulness": null
+          },
+          {
+            "id": "multi-04",
+            "category": "multi_hop",
+            "searched": true,
+            "faithfulness": 0.6666666666666666
+          },
+          {
+            "id": "agg-04",
+            "category": "aggregation",
+            "searched": true,
+            "faithfulness": 0.8333333333333334
+          },
+          {
+            "id": "temporal-05",
+            "category": "temporal",
+            "searched": true,
+            "faithfulness": 0.6666666666666666
+          },
+          {
+            "id": "ambig-03",
+            "category": "ambiguous",
+            "searched": true,
+            "faithfulness": 0.9230769230769231
+          },
+          {
+            "id": "fp-03",
+            "category": "false_premise",
+            "searched": true,
+            "faithfulness": 0.8333333333333334
+          },
+          {
+            "id": "fp-04",
+            "category": "false_premise",
+            "searched": true,
+            "faithfulness": 0.75
+          },
+          {
+            "id": "hotpot-b01",
+            "category": "multi_hop",
+            "searched": true,
+            "faithfulness": 0.8
+          },
+          {
+            "id": "hotpot-b02",
+            "category": "multi_hop",
+            "searched": true,
+            "faithfulness": 0.8
+          },
+          {
+            "id": "hotpot-b10",
+            "category": "multi_hop",
+            "searched": true,
+            "faithfulness": 0.6666666666666666
+          },
+          {
+            "id": "simpleqa-05",
+            "category": "single_hop",
+            "searched": true,
+            "faithfulness": 0.8
+          },
+          {
+            "id": "simpleqa-08",
+            "category": "single_hop",
+            "searched": true,
+            "faithfulness": 0.0
+          }
+        ]
+      },
+      "abstention_accuracy": {
+        "pass": 68,
+        "n": 82
+      },
+      "disambiguation": {
+        "pass": 3,
+        "n": 4
+      },
+      "false_premise_handled": {
+        "pass": 4,
+        "n": 5
+      },
+      "citation_present": {
+        "pass": 62,
+        "n": 64
+      },
+      "by_category": {
+        "aggregation": {
+          "pass_rate": 0.933,
+          "n": 15,
+          "faithfulness_micro": 0.983,
+          "avg_searches": 2.73,
+          "fail_reasons": {
+            "abstained_wrongly": 1,
+            "incorrect": 1
+          }
+        },
+        "ambiguous": {
+          "pass_rate": 0.75,
+          "n": 4,
+          "faithfulness_micro": 0.977,
+          "avg_searches": 1.0,
+          "fail_reasons": {
+            "not_disambiguated": 1
+          }
+        },
+        "false_premise": {
+          "pass_rate": 0.8,
+          "n": 5,
+          "faithfulness_micro": 0.895,
+          "avg_searches": 0.8,
+          "fail_reasons": {
+            "grounding_violation": 1,
+            "abstained_wrongly": 1,
+            "premise_not_handled": 1,
+            "incorrect": 1
+          }
+        },
+        "multi_hop": {
+          "pass_rate": 0.52,
+          "n": 25,
+          "faithfulness_micro": 0.946,
+          "avg_searches": 3.16,
+          "fail_reasons": {
+            "low_faithfulness": 2,
+            "partial_answer": 4,
+            "abstained_wrongly": 6,
+            "incorrect": 6
+          }
+        },
+        "single_hop": {
+          "pass_rate": 0.583,
+          "n": 24,
+          "faithfulness_micro": 0.97,
+          "avg_searches": 2.12,
+          "fail_reasons": {
+            "grounding_violation": 2,
+            "abstained_wrongly": 6,
+            "incorrect": 6,
+            "partial_answer": 1,
+            "low_faithfulness": 1
+          }
+        },
+        "temporal": {
+          "pass_rate": 0.8,
+          "n": 5,
+          "faithfulness_micro": 0.941,
+          "avg_searches": 1.0,
+          "fail_reasons": {
+            "low_faithfulness": 1
+          }
+        },
+        "unanswerable": {
+          "pass_rate": 1.0,
+          "n": 4,
+          "faithfulness_micro": null,
+          "avg_searches": 0.5,
+          "fail_reasons": {}
+        }
+      }
+    }
+  }
+}
